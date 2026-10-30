@@ -1,4 +1,6 @@
 .env
+.avela-local.json
+/output/
 .env.*
 !.env.example
 /*.sql

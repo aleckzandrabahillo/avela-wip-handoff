@@ -22,7 +22,7 @@ final class PiiMigration
                 }else $pending[]='ALTER TABLE '.$table.' ADD '.$name.' TEXT CHARACTER SET ascii COLLATE ascii_bin NULL DEFAULT NULL';
             }
             if(isset($columns['pii_encrypted'])){
-                $c=$columns['pii_encrypted'];if($c['Type']!=='tinyint(1) unsigned'||$c['Null']!=='NO'||(string)$c['Default']!=='0')throw new DomainException('Unexpected encryption-state column.');
+                $c=$columns['pii_encrypted'];if(\App\Core\MySqlType::normalize($c['Type'])!=='tinyint unsigned'||$c['Null']!=='NO'||(string)$c['Default']!=='0')throw new DomainException('Unexpected encryption-state column.');
             }else $pending[]='ALTER TABLE '.$table.' ADD pii_encrypted TINYINT(1) UNSIGNED NOT NULL DEFAULT 0';
         }
         if($apply){foreach($pending as $sql)$pdo->exec($sql);$this->run($pdo,false);}

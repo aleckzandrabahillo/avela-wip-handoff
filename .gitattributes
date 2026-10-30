@@ -2,3 +2,5 @@
 
 # Catalog evidence and guarded imports hash exact reviewed JSON bytes.
 /database/*.json text eol=lf
+# The legacy catalog's existing evidence hashes its original CRLF bytes.
+/database/demo_catalog.json text eol=crlf

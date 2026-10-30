@@ -25,7 +25,7 @@ final class AccountExperienceMigration
    foreach($columns as $extension)if($extension['Field']==='province'&&(strtolower($extension['Type'])!=='varchar(80)'||$extension['Null']!=='YES'))throw new DomainException('Unexpected province extension.');
    $columns=array_values(array_filter($columns,fn($column)=>$column['Field']!=='province'));$expected=['user_id'=>'bigint(20) unsigned','country'=>'char(2)','first_name'=>'varchar(60)','last_name'=>'varchar(60)','address_line'=>'varchar(200)','barangay'=>'varchar(100)','postal_code'=>'char(4)','city'=>'varchar(100)','region'=>'varchar(16)','contact_no'=>'varchar(25)','revision'=>'char(32)','created_at'=>'datetime','updated_at'=>'datetime'];
    if(!self::addressesInstalled($pdo)||array_column($columns,'Field')!==array_keys($expected))throw new DomainException('Unexpected saved-address schema.');
-   foreach($columns as $c)if(strtolower($c['Type'])!==$expected[$c['Field']]||$c['Null']!=='NO')throw new DomainException('Unexpected address column.');
+   foreach($columns as $c)if(\App\Core\MySqlType::normalize($c['Type'])!==\App\Core\MySqlType::normalize($expected[$c['Field']])||$c['Null']!=='NO')throw new DomainException('Unexpected address column.');
    $key=$pdo->query('SHOW INDEX FROM customer_delivery_addresses WHERE Key_name="PRIMARY"')->fetchAll();$create=$pdo->query('SHOW CREATE TABLE customer_delivery_addresses')->fetch(PDO::FETCH_NUM)[1];
    if(count($key)!==1||$key[0]['Column_name']!=='user_id'||!preg_match('/FOREIGN KEY \(`user_id`\) REFERENCES `users` \(`id`\) ON DELETE CASCADE/',$create))throw new DomainException('Unexpected address ownership constraint.');
   }

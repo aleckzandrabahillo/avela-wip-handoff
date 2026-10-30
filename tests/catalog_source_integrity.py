@@ -13,6 +13,11 @@ def manifest(name):
 
 
 class CatalogSourceIntegrity(unittest.TestCase):
+    def test_legacy_reviewed_catalog_bytes(self):
+        raw = (ROOT / "database/demo_catalog.json").read_bytes()
+        evidence = manifest("suitability_evidence.json")
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), evidence["catalog_sha256"])
+
     def test_reviewed_catalog_bytes(self):
         raw = (ROOT / "database/avela_catalog_20261030.json").read_bytes()
         evidence = manifest("avela_suitability_20261030.json")
