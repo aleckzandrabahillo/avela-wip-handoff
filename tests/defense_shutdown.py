@@ -23,6 +23,7 @@ class StopTests(unittest.TestCase):
         self.wrong_owner = False
         self.post_fails = False
         self.confirm = True
+        self.name_override = None
 
     def request(self, key, method, identity, action=""):
         self.calls.append((method, identity, action))
@@ -34,7 +35,7 @@ class StopTests(unittest.TestCase):
             return
         web = identity == self.config["STOP_WEB_ID"]
         return dict(id=identity, ownerId="wrong" if self.wrong_owner else self.config["STOP_WORKSPACE_ID"],
-                    name=self.config["STOP_WEB_NAME"] if web else "avela-defense-auto-stop",
+                    name=(self.name_override or self.config["web_names"][0]) if web else "avela-defense-auto-stop",
                     type="web_service" if web else "cron_job",
                     suspended="suspended" if web and self.web_suspended else "not_suspended")
 
@@ -77,10 +78,22 @@ class StopTests(unittest.TestCase):
         self.run_controller(audit_only=True)
         self.assertEqual(self.posts(), [])
 
+    def test_explicit_rename_keeps_same_service_protected(self):
+        self.config = controller.configuration(self.env | {"STOP_WEB_NAME": "avela-defense-test,avela"})
+        self.name_override = "avela"
+        self.run_controller()
+        self.assertEqual(self.posts(), [self.config["STOP_WEB_ID"], self.config["STOP_CONTROLLER_ID"]])
+
+    def test_unapproved_name_never_mutates(self):
+        self.name_override = "avela-unrelated"
+        with self.assertRaises(RuntimeError): self.run_controller()
+        self.assertEqual(self.posts(), [])
+
     def test_reject_ambiguous_or_injected_identity(self):
         for key, value in [("STOP_WEB_ID", self.env["STOP_CONTROLLER_ID"]),
                            ("STOP_CONTROLLER_ID", "../other"), ("STOP_RENDER_API_KEY", "x\nAuthorization: bad"),
-                           ("STOP_DEADLINE_UTC", "tomorrow"), ("STOP_WEB_NAME", "other-application")]:
+                           ("STOP_DEADLINE_UTC", "tomorrow"), ("STOP_WEB_NAME", "other-application"),
+                           ("STOP_WEB_NAME", "avela,avela"), ("STOP_WEB_NAME", "avela,avela-care,avela-shop")]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 controller.configuration(self.env | {key: value})
 

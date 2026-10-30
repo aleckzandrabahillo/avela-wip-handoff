@@ -25,8 +25,11 @@ def configuration(environ):
         raise ValueError("Controller must be separate")
     if not re.fullmatch(r"tea-[a-z0-9]{10,40}", result["STOP_WORKSPACE_ID"]):
         raise ValueError("Invalid workspace identity")
-    if not re.fullmatch(r"avela-defense-[a-z0-9-]{1,50}", result["STOP_WEB_NAME"]):
+    names = result["STOP_WEB_NAME"].split(",")
+    if (not 1 <= len(names) <= 2 or len(set(names)) != len(names)
+            or any(len(name) > 80 or not re.fullmatch(r"avela(?:-[a-z0-9]+)*", name) for name in names)):
         raise ValueError("Invalid defense service name")
+    result["web_names"] = names
     if not re.fullmatch(r"rnd_[A-Za-z0-9_-]{16,200}", result["STOP_RENDER_API_KEY"]):
         raise ValueError("Missing API credential")
     result["deadline"] = datetime.strptime(result["STOP_DEADLINE_UTC"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
@@ -52,8 +55,9 @@ def api(credential, method, service_id, action=""):
 
 
 def verify_service(service, identity, name, owner, kind):
+    names = (name,) if isinstance(name, str) else tuple(name)
     if (service.get("id") != identity or service.get("ownerId") != owner
-            or service.get("name") != name or service.get("type") != kind
+            or service.get("name") not in names or service.get("type") != kind
             or service.get("suspended") not in ("suspended", "not_suspended")):
         raise RuntimeError("Service identity mismatch")
 
@@ -61,7 +65,7 @@ def verify_service(service, identity, name, owner, kind):
 def run(config, now, request=api, pause=time.sleep, audit_only=False):
     key, web, controller = (config[k] for k in ("STOP_RENDER_API_KEY", "STOP_WEB_ID", "STOP_CONTROLLER_ID"))
     target = request(key, "GET", web)
-    verify_service(target, web, config["STOP_WEB_NAME"], config["STOP_WORKSPACE_ID"], "web_service")
+    verify_service(target, web, config["web_names"], config["STOP_WORKSPACE_ID"], "web_service")
     own = request(key, "GET", controller)
     verify_service(own, controller, "avela-defense-auto-stop", config["STOP_WORKSPACE_ID"], "cron_job")
     if audit_only:
@@ -75,7 +79,7 @@ def run(config, now, request=api, pause=time.sleep, audit_only=False):
         for _ in range(10):
             pause(2)
             target = request(key, "GET", web)
-            verify_service(target, web, config["STOP_WEB_NAME"], config["STOP_WORKSPACE_ID"], "web_service")
+            verify_service(target, web, config["web_names"], config["STOP_WORKSPACE_ID"], "web_service")
             if target["suspended"] == "suspended":
                 break
         else:
