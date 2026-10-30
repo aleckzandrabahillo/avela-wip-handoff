@@ -31,6 +31,13 @@ final class Database
                 PDO::ATTR_EMULATE_PREPARES => false,
             ] + DatabaseTls::options((string) env('DB_SSL_CA', ''), env('DB_TLS_REQUIRED', false) === true);
             self::$pdo = new PDO($dsn, $user, $pass, $options);
+            // Aiven enables ANSI_QUOTES by default. Existing queries use MySQL double-quoted
+            // strings; adjust this connection only and retain every strict-validation flag.
+            $mode = (string) self::$pdo->query('SELECT @@SESSION.sql_mode')->fetchColumn();
+            $compatible = DatabaseSqlMode::compatible($mode);
+            if ($compatible !== $mode) {
+                self::$pdo->prepare('SET SESSION sql_mode = ?')->execute([$compatible]);
+            }
             // DATETIME lock/OTP comparisons must use the same timezone as PHP on every host.
             $zone = new \DateTimeZone((string) env('APP_TIMEZONE', 'Asia/Manila'));
             $offset = (new \DateTimeImmutable('now', $zone))->format('P');
