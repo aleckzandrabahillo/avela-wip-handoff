@@ -4,13 +4,17 @@ namespace App\Services;
 
 use RuntimeException;
 
-/** Optional real Windows Defender custom-file scan. No filename, output or detection text is logged. */
+/** Bounded real scanners. Diagnostics and personal filenames stay out of application output. */
 final class UploadScanner
 {
     public static function assertClean(string $file): void
     {
         $driver = env('UPLOAD_SCANNER', 'disabled');
         if ($driver === 'disabled') return; // Validation still applies; no antivirus claim in this mode.
+        if ($driver === 'clamd') {
+            self::assertClamClean($file);
+            return;
+        }
         if ($driver !== 'defender' || PHP_OS_FAMILY !== 'Windows' || !function_exists('proc_open')) self::unavailable();
         $binary = realpath((string) env('UPLOAD_DEFENDER_BINARY', ''));
         $path = realpath($file);
@@ -23,6 +27,21 @@ final class UploadScanner
         // This fixed custom scan ignores exclusions and never scans the whole machine.
         $exit = (new UploadScanProcess())->run([$binary,'-Scan','-ScanType','3','-File',$path,'-DisableRemediation'],15.0);
         if ($exit !== 0) throw new RuntimeException('The image could not pass its security check. Choose another image or try again later.');
+    }
+
+    private static function assertClamClean(string $file): void
+    {
+        $path = realpath($file);
+        // The executable and local socket are fixed, root-controlled container paths.
+        if (PHP_OS_FAMILY === 'Windows' || !function_exists('proc_open')
+            || !is_executable('/usr/bin/clamdscan') || !file_exists('/run/clamav/clamd.ctl')
+            || !$path || is_link($file) || !is_file($path)) self::unavailable();
+        $exit = (new UploadScanProcess())->run([
+            '/usr/bin/clamdscan', '--config-file=/etc/clamav/clamd.conf', '--fdpass', '--no-summary', '--', $path,
+        ], 15.0);
+        if ($exit !== 0) {
+            throw new RuntimeException('The image could not pass its security check. Choose another image or try again later.');
+        }
     }
 
     private static function unavailable(): never

@@ -4,3 +4,6 @@
 /database/*.json text eol=lf
 # The legacy catalog's existing evidence hashes its original CRLF bytes.
 /database/demo_catalog.json text eol=crlf
+/Dockerfile text eol=lf
+/.dockerignore text eol=lf
+/deploy/* text eol=lf
