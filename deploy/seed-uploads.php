@@ -5,6 +5,7 @@ declare(strict_types=1);
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }
 require dirname(__DIR__) . '/bootstrap.php';
 session_write_close();
+$stage = 'configuration';
 try {
     $parts = filter_var(getenv('UPLOAD_SEED_PARTS'), FILTER_VALIDATE_INT);
     if ($parts === false || $parts < 0 || $parts > 32) throw new RuntimeException();
@@ -21,6 +22,7 @@ try {
     if (!is_array($files) || count($files) > 100) throw new RuntimeException();
     $saved = 0;
     foreach ($files as $file) {
+        $stage = 'file integrity';
         if (!is_array($file) || !preg_match('~^(products|profile)/[a-f0-9]{32}\.(jpg|png|webp)$~D', $file['path'] ?? '')) throw new RuntimeException();
         $content = base64_decode($file['content'] ?? '', true);
         if ($content === false || strlen($content) > App\Services\ImageUploadPolicy::maxBytes()
@@ -35,7 +37,9 @@ try {
         if (!$temporary) throw new RuntimeException();
         try {
             if (file_put_contents($temporary, $content) !== strlen($content)) throw new RuntimeException();
+            $stage = 'antivirus';
             App\Services\UploadScanner::assertClean($temporary);
+            $stage = 'image validation';
             $info = getimagesize($temporary);
             $expected = match (pathinfo($destination, PATHINFO_EXTENSION)) {
                 'jpg' => IMAGETYPE_JPEG, 'png' => IMAGETYPE_PNG, 'webp' => IMAGETYPE_WEBP,
@@ -46,7 +50,7 @@ try {
         } finally { if (is_file($temporary)) unlink($temporary); }
     }
     echo json_encode(['private_uploads_seeded' => $saved]), PHP_EOL;
-} catch (Throwable) {
-    fwrite(STDERR, "Private upload seed rejected. Existing files were not overwritten.\n");
+} catch (Throwable $error) {
+    fwrite(STDERR, 'Private upload seed rejected at ' . $stage . ' (' . get_class($error) . "). Existing files were not overwritten.\n");
     exit(1);
 }

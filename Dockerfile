@@ -5,9 +5,10 @@ FROM php:8.4-apache-bookworm
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libcurl4-openssl-dev \
        libjpeg62-turbo-dev libonig-dev libpng-dev libwebp-dev python3 unzip \
-       clamav-daemon clamav-freshclam clamav util-linux \
+       clamav-daemon clamav-freshclam clamav clamdscan util-linux \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
     && docker-php-ext-install -j2 curl gd mbstring pdo_mysql opcache \
+    && test -x /usr/bin/clamdscan \
     && a2enmod rewrite headers \
     && usermod -a -G www-data clamav \
     && rm -rf /var/lib/apt/lists/*
