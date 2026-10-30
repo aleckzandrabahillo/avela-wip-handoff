@@ -1,0 +1,17 @@
+# Avela handoff checkout
+
+This checkout comes from the owner's `avela-wip-handoff` repository and is the current source for local review. Preserve native PHP 8.2+, PDO/MySQL InnoDB, server-rendered HTML, CSS and vanilla JavaScript. Controllers coordinate HTTP validation/responses, services hold business rules, models persist data, and only `public/` is the document root.
+
+Follow `docs/DEVICE_TRANSFER.md` for installation. The encrypted private handoff is separate from Git: it contains the original database, environment settings, MFA/PII keys and uploads. Authenticate extraction and verify the manifest before using it. Restore into a new empty database with a dedicated application account; never overwrite another Avela installation or run `scripts/install.php` on a restored database. Retain original encryption keys and all key IDs required by retained records. Archive/key files, extracted data, SQL, `.env`, sessions, mail, logs and credentials stay outside Git/public responses. Do not print them in commands, screenshots or reports.
+
+Keep the existing installations under `PHP_Group02_Project` and `avela_transfer` intact. They do not establish that this source's 213-product owner database has been restored. A preview using other data must be labelled as such and must use a separate database. A test-style database name does not make retained personal data disposable.
+
+Preserve this source's documented authenticator enrollment transition, challenge expiry/replay/version checks, sensitive-change email proofs, password hashing, account eligibility, role/ownership guards, CSRF and stale revisions. Do not disable enrolled MFA or copy sessions for convenience. Mutations and required audits commit together. Maintain server-calculated totals, stock locking, idempotency and immutable order snapshots. Use bound parameters and context-appropriate output encoding.
+
+Maya remains Sandbox-only and disabled on the destination until its identity/network requirements are verified. Keep local experiment/simulation, webhook and scheduled-worker readiness false during transfer. Do not copy or start old-machine workers or relax identity guards. Browser payment redirects are not evidence of payment. Provider delivery, public HTTPS, upload scanning and deployment scheduling require separate acceptance evidence.
+
+Read the focused security/payment/encryption/upload document before changing its boundary. Maintain accessible labels, keyboard navigation, visible focus, responsive layouts and useful loading/error/empty states while preserving the supplied interface. Do not mix source from an older checkout wholesale to solve configuration differences.
+
+Use `composer install --no-plugins --no-scripts` with the lockfile; do not substitute an update. Run appropriate PHP/JavaScript syntax checks, pure tests and guarded integration workflows. Mutating tests require a separate verified synthetic database, never the restored owner data. Inspect actual rendering when running. Report source checks separately from runtime/provider/restore tests. There is no TypeScript project or configured frontend production-build/static-analysis pipeline unless this checkout adds one.
+
+Maintain setup, architecture, security-boundary and deployment-readiness documentation. Make local Git checkpoints for verified stages without publishing. Work is complete only when the requested local result is verified or missing required private transfer material and its effect are stated explicitly.

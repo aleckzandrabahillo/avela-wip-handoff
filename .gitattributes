@@ -1,1 +1,4 @@
 *.php linguist-language=PHP
+
+# Catalog evidence and guarded imports hash exact reviewed JSON bytes.
+/database/*.json text eol=lf
