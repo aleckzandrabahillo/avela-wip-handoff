@@ -47,8 +47,7 @@ try{$shippingQuote=\App\Services\ShippingService::quote($values['postal_code']??
       <fieldset class="checkout-section checkout-payment-section"><legend>Payment</legend>
         <label class="checkout-option"><span><input type="radio" name="payment_method" value="cod" <?= ($values['payment_method']??'cod')==='cod'?'checked':'' ?> required> Cash on delivery</span></label>
         <?php if($mayaAvailable??false): ?>
-          <label class="checkout-option"><span><input type="radio" name="payment_method" value="maya_sandbox" aria-describedby="checkout-card-info" <?= ($values['payment_method']??'')==='maya_sandbox'?'checked':'' ?> required> Credit / Debit Card</span></label>
-          <p class="muted" id="checkout-card-info">Maya Sandbox opens after you place your order. Use test card details only.</p>
+          <label class="checkout-option"><span><input type="radio" name="payment_method" value="maya_sandbox" <?= ($values['payment_method']??'')==='maya_sandbox'?'checked':'' ?> required> Credit / Debit Card</span></label>
         <?php endif; ?>
         <?php if(isset($errors['payment_method'])): ?><p class="field-error"><?= e($errors['payment_method']) ?></p><?php endif; ?>
       </fieldset>

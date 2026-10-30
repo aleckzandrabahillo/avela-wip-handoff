@@ -81,7 +81,7 @@ Pure target/heartbeat rejection checks are in `tests/maya_api_mode.php`; guarded
 
 The owner-authorized localhost store can use an external protected `MAYA_LOCAL_TARGET_FILE` pinning the project, origin, loopback host and complete database identity. It is distinct from disposable QA and does not permit mutating tests against retained records. Both `127.0.0.1` and `::1` peers are accepted only for the exact PHP development server at `localhost:18080`. The original disposable guards remain intact. This local mode uses real Sandbox hosted checkout and the authenticated/manual browser confirmation flow; it does not claim public webhook or unattended-worker delivery.
 
-Checkout labels the option **Credit / Debit Card** and explains that Maya Sandbox opens after order placement and accepts test card details only. Avela does not collect card credentials.
+Checkout labels the option **Credit / Debit Card**. The owner requested removal of its explanatory paragraph on 31 October. The provider remains Sandbox-only, and Avela does not collect card credentials.
 
 MAYA_LOCAL_SIMULATION defaults to false. Local interactive tests require the explicitly guarded private development launcher, loopback PHP development server and disposable test database. The default provider client refuses to run when simulation is selected; no production API or automatic insecure fallback is enabled. The launcher injects an in-process test transport and clearly labels outcomes as simulated. Keep genuine webhook/worker readiness declarations false until separately verified. Simulated records belong only in the disposable test database.
 
