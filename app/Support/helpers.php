@@ -142,7 +142,7 @@ function staff_status(string $value): string
 }
 
 /** Bounded, escaped destinations retain the caller's existing validated filters. */
-function pagination_nav(int $page, int $pages, callable $urlFor, string $label='Pages', int $window=2): string
+function pagination_nav(int $page, int $pages, callable $urlFor, string $label='Pages', int $window=2, bool $jump=false): string
 {
     $pages=max(1,$pages);$page=max(1,min($page,$pages));$window=max(1,min(4,$window));
     if($pages===1)return '';
@@ -153,5 +153,26 @@ function pagination_nav(int $page, int $pages, callable $urlFor, string $label='
     $last=0;foreach($shown as $number){if($last&&$number-$last>1)$html.='<span class="page-gap" aria-hidden="true">…</span>';
         $html.=$number===$page?'<span class="page-current" aria-current="page">'.$number.'</span>':'<a aria-label="Page '.$number.'" href="'.e($urlFor($number)).'">'.$number.'</a>';$last=$number;}
     if($page<$pages)$html.='<a rel="next" href="'.e($urlFor($page+1)).'">Next</a>';
-    return $html.'<span class="page-summary">Page '.$page.' of '.$pages.'</span></nav>';
+    $html.='<span class="page-summary">Page '.$page.' of '.$pages.'</span>';
+    if($jump){
+        static $jumpSequence=0;
+        $id='staff-page-jump-'.(++$jumpSequence);
+        $destination=$urlFor($page);$filters=[];
+        parse_str((string)parse_url($destination,PHP_URL_QUERY),$filters);
+        unset($filters['page']);
+        $hidden=static function(array $values,string $prefix='')use(&$hidden):string{
+            $fields='';
+            foreach($values as $key=>$value){
+                $name=$prefix===''?(string)$key:$prefix.'['.$key.']';
+                if(is_array($value))$fields.=$hidden($value,$name);
+                elseif(is_scalar($value))$fields.='<input type="hidden" name="'.e($name).'" value="'.e($value).'">';
+            }
+            return $fields;
+        };
+        $action=preg_replace('/[?#].*$/','',$destination);
+        $html.='<form class="staff-page-jump" method="get" action="'.e($action).'">'.$hidden($filters)
+            .'<label for="'.$id.'">Go to page<input id="'.$id.'" aria-label="'.e('Page number for '.$label).'" type="number" name="page" min="1" max="'.$pages.'" step="1" value="'.$page.'" inputmode="numeric" required></label>'
+            .'<button class="btn btn-secondary btn-sm" type="submit">Go<span class="sr-only"> to page for '.e($label).'</span></button></form>';
+    }
+    return $html.'</nav>';
 }

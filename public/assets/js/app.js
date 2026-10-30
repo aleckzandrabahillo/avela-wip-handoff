@@ -743,10 +743,13 @@ function setupStaffInterface() {
     const sort = root.querySelector('[data-staff-sort]');
     const previous = root.querySelector('[data-staff-previous]');
     const next = root.querySelector('[data-staff-next]');
+    const jump = root.querySelector('[data-staff-jump]');
+    const pageInput = root.querySelector('[data-staff-page-input]');
     const initialOrder = new Map(rows.map((row, index) => [row, index]));
     const normalize = (value) => value.normalize('NFKC').toLocaleLowerCase();
     const pageSize = 10;
     let page = 1;
+    let pageCount = 1;
     // Previous/Next remain stable DOM controls, so repeated Enter/Space keeps working.
     const numbers = root.querySelector('[data-staff-numbers]');
     const renderNumbers = (pages) => {
@@ -782,7 +785,9 @@ function setupStaffInterface() {
         return initialOrder.get(a) - initialOrder.get(b);
       });
       const pages = Math.max(1, Math.ceil(matches.length / pageSize));
+      pageCount = pages;
       page = Math.min(page, pages);
+      if(jump && pageInput){jump.hidden = pages === 1;pageInput.max = String(pages);pageInput.value = String(page);}
       const visible = new Set(matches.slice((page - 1) * pageSize, page * pageSize));
       rows.forEach((row) => { row.hidden = !visible.has(row); });
       matches.forEach((row) => row.parentElement.appendChild(row));
@@ -802,8 +807,12 @@ function setupStaffInterface() {
     [status, sort].forEach((control) => control.addEventListener('change', () => { page = 1; render(); }));
     previous.addEventListener('click', () => { page--; render(); });
     next.addEventListener('click', () => { page++; render(); });
-    root.querySelector('[data-staff-reset]').addEventListener('click', () => {
-      search.value = ''; status.value = ''; sort.value = 'original'; page = 1; render(); status.dispatchEvent(new Event('change',{bubbles:true})); sort.dispatchEvent(new Event('change',{bubbles:true})); search.focus();
+    jump?.addEventListener('submit', event => {
+      event.preventDefault();
+      const requested = Number(pageInput.value);
+      if(!pageInput.checkValidity() || !Number.isInteger(requested) || requested < 1 || requested > pageCount){pageInput.reportValidity();return;}
+      page = requested;
+      render();
     });
     render();
   });

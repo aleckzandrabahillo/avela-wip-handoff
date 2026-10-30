@@ -17,7 +17,7 @@ $paginationUrl=static fn(int $number):string=>url($path).'?'.http_build_query(ar
       <label class="field">Through date<input type="date" name="to" value="<?= e($filters['to']) ?>"></label>
       <label class="field">Sort<select name="sort"><?php foreach(['newest'=>'Newest first','oldest'=>'Oldest first','actor'=>'Account','event'=>'Event / action'] as $key=>$label): ?><option value="<?= e($key) ?>" <?= $filters['sort']===$key?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
     </div>
-    <div><button class="btn btn-primary" type="submit">Apply filters</button> <a class="btn btn-secondary" href="<?= e(url($path)) ?>">Clear</a></div>
+    <div><button class="btn btn-primary" type="submit">Apply filters</button></div>
   </form>
   <p role="status"><?= (int)$total ?> record(s) · Page <?= (int)$page ?> of <?= (int)$pages ?>.</p>
   <?php if(!$records): ?><p>No records match these filters.</p><?php else: ?>
@@ -32,5 +32,5 @@ $paginationUrl=static fn(int $number):string=>url($path).'?'.http_build_query(ar
     </tbody></table>
   </div>
   <?php endif; ?>
-  <?= pagination_nav((int)$page,(int)$pages,$paginationUrl,'Log pages') ?>
+  <?= pagination_nav((int)$page,(int)$pages,$paginationUrl,'Log pages',2,true) ?>
 </section>

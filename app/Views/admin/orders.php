@@ -3,7 +3,7 @@
 <form method="get" action="<?= e(url('/admin/orders')) ?>" class="staff-list-tools">
  <label class="field">Order or recipient<input type="search" name="q" maxlength="100" value="<?= e($history['q']) ?>"></label>
  <label class="field">Status<select name="status"><option value="">All statuses</option><?php foreach(['pending','processing','shipped','delivered','cancelled'] as $status): ?><option value="<?= e($status) ?>" <?= $history['status']===$status?'selected':'' ?>><?= e(ucfirst($status)) ?></option><?php endforeach; ?></select></label>
- <button class="btn btn-primary" type="submit">Filter orders</button><a href="<?= e(url('/admin/orders')) ?>">Clear</a>
+ <button class="btn btn-primary" type="submit">Filter orders</button>
 </form>
 <p><?= (int)$history['total'] ?> matching orders</p>
 <?php if(!$history['items']): ?><p class="empty-state">No orders match these filters.</p><?php else: ?>
@@ -34,6 +34,6 @@
  <p class="muted small order-status-note" id="<?= e($statusId) ?>-note"><?= $next&&!$canAdvance?'Awaiting verified payment':'No further updates' ?></p>
  <?php endif; ?></td>
 </tr><?php endforeach; ?></tbody></table></div>
-<?= pagination_nav((int)$history['page'],(int)$history['pages'],static fn(int $n):string=>url('/admin/orders?'.http_build_query(['q'=>$history['q'],'status'=>$history['status'],'page'=>$n])),'Administrator order pages') ?>
+<?= pagination_nav((int)$history['page'],(int)$history['pages'],static fn(int $n):string=>url('/admin/orders?'.http_build_query(['q'=>$history['q'],'status'=>$history['status'],'page'=>$n])),'Administrator order pages',2,true) ?>
 <?php endif; ?>
 <details class="staff-help"><summary>About order updates and cancellations</summary><p>Pending or processing COD orders can be cancelled when their original stock deduction is confirmed. Shipped, delivered and older unreconciled orders require separate review.</p></details>

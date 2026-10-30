@@ -2,15 +2,15 @@
 @font-face{font-family:Manrope;font-style:normal;font-weight:500;font-display:swap;src:url('../fonts/manrope/manrope-500.ttf') format('truetype')}
 @font-face{font-family:Manrope;font-style:normal;font-weight:600;font-display:swap;src:url('../fonts/manrope/manrope-600.ttf') format('truetype')}
 @font-face{font-family:Manrope;font-style:normal;font-weight:700;font-display:swap;src:url('../fonts/manrope/manrope-700.ttf') format('truetype')}
-/* Avela staff: a warm frame and one working sheet. 228px nav + fluid sheet;
+/* Avela staff: a warm frame and one working sheet. 280px nav + fluid sheet;
    sheet padding 24px, 16px grid gaps; each row's fractional spans sum to 100%. */
 .avela-staff{font-family:Manrope,ui-sans-serif,sans-serif;--staff-ground:var(--avela-panel,#e9e5de);--staff-surface:var(--avela-paper,#f7f5f0);--staff-raised:#fffdf9;--staff-active:#e0d9cf;--staff-border:#cfc7bc;--staff-control:#948679;--staff-ink:var(--avela-ink,#352f2a);--staff-muted:var(--avela-secondary,#6d6359);--staff-accent:var(--avela-action,#51453d);--staff-accent-hover:#6d5f53;--staff-positive:#345e48;--staff-negative:#943c42;--staff-gap:16px;--staff-radius:16px;--staff-control-radius:8px;--staff-fast:150ms;--staff-base:220ms;--staff-ease:cubic-bezier(.2,.7,.2,1);background:var(--staff-ground);color:var(--staff-ink);font-size:var(--type-body, 15px);line-height:1.5}
-.avela-staff .staff-shell{--staff-surface:var(--avela-paper,#f7f5f0);--staff-ink:var(--avela-ink,#352f2a);--staff-line:var(--staff-border);background:var(--staff-ground);color:var(--staff-ink);grid-template-columns:228px minmax(0,1fr);min-height:100dvh}
+.avela-staff .staff-shell{--staff-surface:var(--avela-paper,#f7f5f0);--staff-ink:var(--avela-ink,#352f2a);--staff-line:var(--staff-border);background:var(--staff-ground);color:var(--staff-ink);grid-template-columns:280px minmax(0,1fr);min-height:100dvh}
 .avela-staff .staff-sidebar{position:sticky;top:0;height:100dvh;background:var(--staff-ground);color:var(--staff-ink);border:0;padding:24px 14px 18px;display:flex;flex-direction:column;overflow:auto;gap:0}
-.avela-staff .staff-brand{display:block;padding:0 14px;margin:0;width:max-content}
+.avela-staff .staff-brand{display:block;padding:0;margin:0 auto;width:max-content}
 .avela-staff .staff-brand img{width:108px;height:auto}
-.staff-workspace-name{font-size:var(--type-label, 14px);color:var(--staff-muted);margin:12px 14px 20px}
-.avela-staff .staff-sidebar nav{display:grid;gap:4px;margin:0}
+.staff-workspace-name{font-size:var(--type-label, 14px);color:var(--staff-muted);margin:12px 0 24px;text-align:center}
+.avela-staff .staff-sidebar nav{display:grid;gap:8px;margin:0}
 .avela-staff .staff-sidebar nav>a,.avela-staff .staff-sidebar details>summary{display:flex;align-items:center;gap:10px;min-height:44px;padding:10px 12px;border-radius:8px;background:transparent;color:var(--staff-ink);font-size:var(--type-body, 15px);font-weight:500;letter-spacing:0;text-transform:none;border:0;transition:background var(--staff-fast),color var(--staff-fast)}
 .avela-staff .staff-sidebar nav a:hover,.avela-staff .staff-sidebar summary:hover{background:var(--staff-active);color:var(--staff-ink)}
 .avela-staff .staff-sidebar nav a.active{background:var(--staff-active);color:var(--staff-ink);font-weight:650;box-shadow:none;border:0}
@@ -20,8 +20,9 @@
 .avela-staff .staff-sidebar details>summary>span:not(.staff-group-sign){flex:1}
 .avela-staff .staff-sidebar .staff-group-sign::before{content:'+';font-size:18px;font-weight:400;line-height:1}
 .avela-staff .staff-sidebar details[open] .staff-group-sign::before{content:'−'}
-.avela-staff .staff-sidebar details>div{padding:3px 0 5px 25px;margin:0 0 0 10px;border-left:1px solid #d2cbc1}
-.avela-staff .staff-sidebar details a{font-size:var(--type-body, 15px);font-weight:450;min-height:40px;padding:8px 12px;border-radius:8px;transition:background var(--staff-fast),color var(--staff-fast),transform var(--staff-fast)}
+.avela-staff .staff-sidebar details>div{display:grid;gap:6px;padding:6px 0 8px 25px;margin:0 0 0 10px;border-left:1px solid #d2cbc1}
+.avela-staff .staff-sidebar details a{display:flex;align-items:center;font-size:var(--type-body, 15px);font-weight:450;min-height:40px;padding:8px 12px;border-radius:8px;white-space:nowrap;transition:background var(--staff-fast),color var(--staff-fast),transform var(--staff-fast)}
+.avela-staff .staff-sidebar nav>a>span,.avela-staff .staff-sidebar summary>span:not(.staff-group-sign){white-space:nowrap}
 .avela-staff .staff-sidebar details a:hover{transform:translateX(2px)}
 .staff-icon{display:inline-block;flex:none;vertical-align:middle;stroke-width:1.6}
 .staff-sidebar-bottom{margin-top:auto;padding:28px 8px 0}
@@ -87,6 +88,10 @@
 .avela-staff .staff-pagination [aria-current=page]{background:var(--staff-active);border-color:var(--staff-active);font-weight:650}
 .staff-page-numbers{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
 .avela-staff .staff-pagination .page-summary{font-size:var(--type-label, 14px);color:var(--staff-muted);margin:0 8px;white-space:nowrap}
+.avela-staff .staff-main .staff-page-jump{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 0 6px}
+.avela-staff .staff-page-jump[hidden]{display:none}
+.avela-staff .staff-page-jump label{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;font-size:var(--type-label,14px);font-weight:500}
+.avela-staff .staff-main .staff-page-jump input{width:76px;min-width:70px;min-height:40px;margin:0;padding:7px 8px;font-size:var(--type-label,14px);font-variant-numeric:tabular-nums}
 .avela-staff .staff-main>.staff-pagination{justify-content:flex-end;margin:18px 0}
 .avela-staff .staff-main :is(.data-table,.table-wrap,.order-table-wrap,.security-table-wrap,.catalog-activity-table){border:1px solid var(--staff-border);border-radius:12px;overflow:auto;background:transparent;box-shadow:none;margin:0;max-width:100%}
 .avela-staff .staff-main table{width:100%;border-collapse:collapse;color:var(--staff-ink);font-size:var(--type-body, 15px)}

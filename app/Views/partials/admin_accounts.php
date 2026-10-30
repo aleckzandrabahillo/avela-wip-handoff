@@ -7,7 +7,7 @@ $path=$staffMode?'/admin/staff':'/admin/users';$self=(int)(auth_user()['id']??0)
  <label class="field">Search <?= $staffMode?'staff':'customers' ?><input type="search" name="q" maxlength="100" value="<?= e($filters['q']) ?>" placeholder="Name, username or email"></label>
  <label class="field">Status<select name="status"><option value="">All statuses</option><?php foreach(['active','inactive','locked',...($staffMode?[]:['pending'])] as $status): ?><option value="<?= e($status) ?>" <?= $filters['status']===$status?'selected':'' ?>><?= e(ucfirst($status)) ?></option><?php endforeach; ?></select></label>
  <?php if($staffMode): ?><label class="field">Role<select name="role"><option value="">All staff roles</option><?php foreach($roles as $role=>$label): ?><option value="<?= e($role) ?>" <?= $filters['role']===$role?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></label><?php endif; ?>
- <div class="admin-account-actions"><button class="btn btn-primary" type="submit">Filter</button><a href="<?= e(url($path)) ?>">Clear</a></div>
+ <div class="admin-account-actions"><button class="btn btn-primary" type="submit">Filter</button></div>
 </form>
 <p><?= (int)$listing['total'] ?> matching accounts</p>
 <?php if(!$listing['items']): ?><p class="empty-state">No accounts match these filters.</p><?php else: ?>
@@ -32,4 +32,4 @@ $path=$staffMode?'/admin/staff':'/admin/users';$self=(int)(auth_user()['id']??0)
 <?php endif; ?></div></td></tr>
 <?php endforeach; ?></tbody></table></div>
 <?php endif; ?>
-<?= pagination_nav((int)$listing['page'],(int)$listing['pages'],static fn(int $n):string=>url($path.'?'.http_build_query($filters+['page'=>$n])),($staffMode?'Staff':'Customer').' account pages') ?>
+<?= pagination_nav((int)$listing['page'],(int)$listing['pages'],static fn(int $n):string=>url($path.'?'.http_build_query($filters+['page'=>$n])),($staffMode?'Staff':'Customer').' account pages',2,true) ?>
