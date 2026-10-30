@@ -59,9 +59,13 @@ $check('enrolled_authenticators_readable', static function () use ($pdo): bool {
     return true;
 });
 $check('smtp_configuration_valid', static function (): bool { (new App\Services\MailService())->smtpMailer(); return true; });
-$check('maya_destination_flags_disabled', static fn(): bool => env('MAYA_SANDBOX_ENABLED', false) === false
-    && env('MAYA_LOCAL_HOSTED_SANDBOX', false) === false && env('MAYA_LOCAL_SIMULATION', false) === false
-    && env('MAYA_WEBHOOK_READY', false) === false && env('MAYA_RECONCILIATION_READY', false) === false);
+$check('maya_destination_mode_safe', static function (): bool {
+    $inactive = env('MAYA_SANDBOX_ENABLED', false) === false && env('MAYA_LOCAL_HOSTED_SANDBOX', false) === false;
+    $approved = env('MAYA_SANDBOX_ENABLED', false) === true && env('MAYA_LOCAL_HOSTED_SANDBOX', false) === true
+        && env('MAYA_MERCHANT_ORIGIN') === 'http://localhost:18080' && App\Services\MayaLocalTarget::approved();
+    return ($inactive || $approved) && env('MAYA_LOCAL_SIMULATION', false) === false
+        && env('MAYA_WEBHOOK_READY', false) === false && env('MAYA_RECONCILIATION_READY', false) === false;
+});
 echo json_encode(['mode' => 'offline-read-only', 'checks' => $checks,
     'active_products' => (int) $pdo->query('SELECT COUNT(*) FROM products WHERE status="active"')->fetchColumn(),
     'live_provider_requests' => 0, 'business_rows_changed' => 0], JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR), PHP_EOL;

@@ -89,7 +89,8 @@ final class MayaSandboxClient
                 CURLOPT_CONNECTTIMEOUT=>3,CURLOPT_TIMEOUT=>8,CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2,
                 CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_WRITEFUNCTION=>static function($handle,string $chunk)use(&$bytes):int{if(strlen($bytes)+strlen($chunk)>65536)return 0;$bytes.=$chunk;return strlen($chunk);}]);
             if($encoded!==null)curl_setopt($curl,CURLOPT_POSTFIELDS,$encoded);
-            $ok=curl_exec($curl);$code=curl_getinfo($curl,CURLINFO_RESPONSE_CODE);$type=curl_getinfo($curl,CURLINFO_CONTENT_TYPE);curl_close($curl);
+            $ok=curl_exec($curl);$code=curl_getinfo($curl,CURLINFO_RESPONSE_CODE);$type=curl_getinfo($curl,CURLINFO_CONTENT_TYPE);
+            if(PHP_VERSION_ID<80500)curl_close($curl);
             if($ok===false||!is_string($type)||!str_starts_with(strtolower($type),'application/json'))throw new RuntimeException('Payment service is unavailable.');
             $response=['status'=>$code,'body'=>$bytes];
         }

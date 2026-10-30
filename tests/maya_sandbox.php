@@ -118,8 +118,15 @@ try{
     $pdo->exec('CREATE TRIGGER maya_test_audit_fault BEFORE INSERT ON audit_logs FOR EACH ROW SIGNAL SQLSTATE "45000" SET MESSAGE_TEXT="Synthetic Maya audit fault"');
     try{$states[$bp['merchant_reference']]='PAYMENT_FAILED';$before=$stock();verifyHair('Audit failure rolls back release and order',mayaReject(fn()=>$service->reconcile($bad['order']))&&$row($bad['order'])['state']==='pending'&&$stock()===$before);}finally{$pdo->exec('DROP TRIGGER maya_test_audit_fault');}
     $cod=$make(['payment_method'=>'cod']);verifyHair('COD remains independent without Maya row',(int)$pdo->query('SELECT COUNT(*) FROM maya_payments WHERE order_id='.$cod['order'])->fetchColumn()===0&&$pdo->query('SELECT payment_method FROM orders WHERE id='.$cod['order'])->fetchColumn()==='cod');
+    $boundary=$make();$fresh=$make();
+    $batch=App\Services\MayaApiReconciliation::pendingOrders($pdo,$fresh['order']);
+    verifyHair('API worker excludes retained orders below its activation boundary',array_column($batch,'order_id')===[$fresh['order']]);
+    verifyHair('API worker cursor excludes already visited orders',App\Services\MayaApiReconciliation::pendingOrders($pdo,$fresh['order'],$fresh['order'])===[]);
+    $freshPayment=$row($fresh['order']);$pdo->prepare('UPDATE maya_payments SET checkout_id=? WHERE order_id=?')->execute([mayaUuid($freshPayment['merchant_reference']),$fresh['order']]);
+    verifyHair('API worker excludes deterministic simulations',App\Services\MayaApiReconciliation::pendingOrders($pdo,$fresh['order'])===[]);
+    verifyHair('API worker rejects an absent historical boundary',mayaReject(fn()=>App\Services\MayaApiReconciliation::pendingOrders($pdo,0)));
     $httpUser=$newCustomer();(new App\Models\Cart())->add($httpUser,$product,1);$http=hairClient($httpUser);$page=hairRequest('/checkout',$http);
-    verifyHair('Card choice uses the guarded Sandbox route without an adjacent environment badge',str_contains($page['body'],'value="maya_sandbox"')&&str_contains($page['body'],'Debit/Credit Card')&&!str_contains($page['body'],'class="payment-environment"')&&!str_contains($page['body'],'data-card-information')&&!str_contains($page['body'],'name="card_number"'));
+    verifyHair('Card choice explains the hosted Sandbox route without collecting card data',str_contains($page['body'],'value="maya_sandbox"')&&str_contains($page['body'],'Credit / Debit Card')&&str_contains($page['body'],'Use test card details only.')&&!str_contains($page['body'],'data-card-information')&&!str_contains($page['body'],'name="card_number"'));
     preg_match('/name="checkout_key" value="([a-f0-9]{64})"/',$page['body'],$key);$post=['_token'=>$http['csrf'],'checkout_key'=>$key[1],...$input,'total'=>'0.01','shipping_fee'=>'0'];$r=hairRequest('/checkout',$http,$post);
     $q=$pdo->prepare('SELECT id FROM orders WHERE checkout_key=? AND user_id=?');$q->execute([$key[1],$httpUser]);$httpId=(int)$q->fetchColumn();$orders[]=$httpId;
     verifyHair('Actual POST uses simulated hosted sandbox redirect',$r['code']===303&&array_filter($r['headers'],fn($h)=>str_starts_with($h,'Location: https://payments-web-sandbox.paymaya.com/'))!==[]);

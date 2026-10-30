@@ -34,6 +34,12 @@ try {
     if ($ca === false || strlen($ca) > 16384 || openssl_x509_read($ca) === false) throw new RuntimeException();
     $write('pii-keyring.json', $keyring);
     $write('db-ca.pem', $ca);
+    $maya = getenv('MAYA_API_TARGET_BASE64');
+    if (is_string($maya) && $maya !== '') {
+        $decoded = base64_decode($maya, true);
+        if ($decoded === false || strlen($decoded) > 4096 || !is_array(json_decode($decoded, true, 8, JSON_THROW_ON_ERROR))) throw new RuntimeException();
+        $write('maya-api-target.json', $decoded);
+    }
     echo "Private keyring and database CA are ready.\n";
 } catch (Throwable) {
     fwrite(STDERR, "Private configuration unavailable or differs from retained files. No keys were replaced.\n");

@@ -12,8 +12,9 @@ final class MayaSandboxConfig
             throw new RuntimeException('Local simulation requires an explicitly injected test transport.');
         }
         if (env('MAYA_ENVIRONMENT', 'sandbox') !== 'sandbox') throw new RuntimeException('Only Maya Sandbox is supported.');
+        if (env('MAYA_CONFIRMATION_MODE', '') === 'api_reconciliation') MayaApiReconciliation::profile();
         $local = env('MAYA_LOCAL_HOSTED_SANDBOX', false) !== false;
-        if ($local && !self::localHosted()) throw new RuntimeException('Local hosted Sandbox requires the guarded disposable runtime.');
+        if ($local && !self::localHosted()) throw new RuntimeException('Local hosted Sandbox requires an approved exact local runtime.');
         return new MayaSandboxClient(
             self::key('MAYA_PUBLIC_KEY', 'MAYA_SANDBOX_PUBLIC_KEY'),
             self::key('MAYA_SECRET_KEY', 'MAYA_SANDBOX_SECRET_KEY'),
@@ -29,6 +30,8 @@ final class MayaSandboxConfig
         if (!function_exists('curl_init') || !extension_loaded('openssl')) return false;
         if (env('MAYA_LOCAL_HOSTED_SANDBOX', false) !== false) {
             if (!self::localHosted()) return false;
+        } elseif (env('MAYA_CONFIRMATION_MODE', '') === 'api_reconciliation') {
+            if (!MayaApiReconciliation::ready()) return false;
         } elseif (env('MAYA_SANDBOX_ENABLED', false) !== true || env('MAYA_WEBHOOK_READY', false) !== true
             || env('MAYA_RECONCILIATION_READY', false) !== true) return false;
         try { self::client(); return true; } catch (\Throwable) { return false; }
@@ -38,14 +41,14 @@ final class MayaSandboxConfig
     public static function localHosted(): bool
     {
         $launcher = defined('AVELA_LOCAL_HOSTED_SANDBOX_ACTIVE') && AVELA_LOCAL_HOSTED_SANDBOX_ACTIVE === true;
-        $web = PHP_SAPI === 'cli-server' && ($_SERVER['REMOTE_ADDR'] ?? '') === '127.0.0.1'
-            && (int)($_SERVER['SERVER_PORT'] ?? 0) === 18080 && ($_SERVER['HTTP_HOST'] ?? '') === 'localhost:18080';
+        $web = MayaLocalTarget::loopbackWeb($_SERVER, PHP_SAPI);
         return env('MAYA_LOCAL_HOSTED_SANDBOX', false) === true
             && env('MAYA_LOCAL_SIMULATION', false) === false
             && env('MAYA_SANDBOX_ENABLED', false) === true
             && env('MAYA_ENVIRONMENT', 'sandbox') === 'sandbox' && env('APP_ENV') === 'development'
             && env('APP_URL') === 'http://localhost:18080' && env('MAYA_MERCHANT_ORIGIN') === 'http://localhost:18080'
-            && $launcher && ($web || PHP_SAPI === 'cli') && self::disposableDatabase();
+            && $launcher && ($web || PHP_SAPI === 'cli')
+            && (env('MAYA_LOCAL_TARGET_FILE', '') !== '' ? MayaLocalTarget::approved() : self::disposableDatabase());
     }
 
     /** Enabled only by an explicit private development launcher; never an API fallback. */

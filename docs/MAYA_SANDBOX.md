@@ -65,6 +65,24 @@ References: [one-time checkout/API/key contracts](https://developers.maya.ph/ref
 
 ## Local simulation
 
+### Explicit cloud API confirmation mode
+
+The short hosted demonstration supports `MAYA_CONFIRMATION_MODE=api_reconciliation` as an alternative to public webhook delivery. Render's proxy does not satisfy the existing direct-peer/TLS webhook guards; those guards remain unchanged and `MAYA_WEBHOOK_READY=false`. This mode verifies results through Maya's authenticated retrieval API, never through browser return parameters.
+
+An operator supplies `MAYA_API_TARGET_BASE64` privately. Startup materializes its protected `/data/keys/maya-api-target.json` without replacing a different retained profile. It pins the HTTPS merchant origin, connection host/port, schema, actual MySQL port/hostname/server ID/data directory and a positive `first_order_id` captured above all retained order IDs. Production environment, verified database TLS, Sandbox-only keys, no local/simulated mode and explicit Sandbox/reconciliation enablement are required.
+
+`deploy/maya-api-worker.php` runs as `www-data` inside the existing single web instance. A file lock prevents duplicates. Each cycle revalidates the target and checks at most five new pending payments, with bounded provider timeouts and a cursor that advances even on failure. It sleeps 20 seconds between batches. Historical orders and deterministic simulations are excluded. Existing transactional reconciliation preserves proof matching, audit rollback, stock/idempotency and targeted post-commit receipt handling; the historical outbox is never drained. This is eventual confirmation, not a promise of instantaneous status. A failed/uncertain receipt stays available for review under existing mail safeguards.
+
+An atomic private heartbeat pins the target fingerprint, real PID and timestamp. Checkout requires a matching live process and a heartbeat no older than 90 seconds. Cloud health fails if this configured worker dies, permitting the platform to restart the instance. Startup waits for real readiness before serving. The independent budget suspension controller is unchanged. No additional paid service is provisioned for payment polling.
+
+Pure target/heartbeat rejection checks are in `tests/maya_api_mode.php`; guarded synthetic MySQL selection and checkout/RBAC/CSRF/concurrency regressions are in `tests/maya_sandbox.php`. Mock transport results are not evidence of completed provider transactions. Real Sandbox checkout creation, card flow and authenticated final-state checks must be recorded separately.
+
+### Retained local demonstration
+
+The owner-authorized localhost store can use an external protected `MAYA_LOCAL_TARGET_FILE` pinning the project, origin, loopback host and complete database identity. It is distinct from disposable QA and does not permit mutating tests against retained records. Both `127.0.0.1` and `::1` peers are accepted only for the exact PHP development server at `localhost:18080`. The original disposable guards remain intact. This local mode uses real Sandbox hosted checkout and the authenticated/manual browser confirmation flow; it does not claim public webhook or unattended-worker delivery.
+
+Checkout labels the option **Credit / Debit Card** and explains that Maya Sandbox opens after order placement and accepts test card details only. Avela does not collect card credentials.
+
 MAYA_LOCAL_SIMULATION defaults to false. Local interactive tests require the explicitly guarded private development launcher, loopback PHP development server and disposable test database. The default provider client refuses to run when simulation is selected; no production API or automatic insecure fallback is enabled. The launcher injects an in-process test transport and clearly labels outcomes as simulated. Keep genuine webhook/worker readiness declarations false until separately verified. Simulated records belong only in the disposable test database.
 
 

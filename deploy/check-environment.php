@@ -19,9 +19,20 @@ if (!$url || ($url['scheme'] ?? '') !== 'https' || empty($url['host'])
     || !in_array($url['path'] ?? '', ['', '/'], true)) $errors[] = 'trusted HTTPS APP_URL';
 foreach (['APP_ENV' => 'production', 'APP_DEBUG' => false, 'SESSION_SECURE_COOKIE' => true, 'MAIL_DRIVER' => 'smtp',
     'MAIL_LOCAL_STAFF_OTP' => false, 'DB_TLS_REQUIRED' => true, 'PII_ENCRYPTION_ENABLED' => true,
-    'UPLOAD_SCANNER' => 'clamd', 'MAYA_SANDBOX_ENABLED' => false, 'MAYA_LOCAL_HOSTED_SANDBOX' => false,
-    'MAYA_LOCAL_SIMULATION' => false, 'MAYA_WEBHOOK_READY' => false, 'MAYA_RECONCILIATION_READY' => false] as $key => $expected) {
+    'UPLOAD_SCANNER' => 'clamd', 'MAYA_LOCAL_HOSTED_SANDBOX' => false,
+    'MAYA_LOCAL_SIMULATION' => false, 'MAYA_WEBHOOK_READY' => false] as $key => $expected) {
     if (env($key, $expected === false ? false : null) !== $expected) $errors[] = $key;
+}
+if (env('MAYA_CONFIRMATION_MODE', '') === 'api_reconciliation') {
+    try {
+        spl_autoload_register(static function (string $class): void {
+            if (str_starts_with($class, 'App\\')) require dirname(__DIR__) . '/app/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+        });
+        App\Services\MayaApiReconciliation::profile();
+        App\Services\MayaSandboxConfig::client();
+    } catch (Throwable) { $errors[] = 'approved Maya Sandbox API configuration'; }
+} else {
+    foreach (['MAYA_SANDBOX_ENABLED','MAYA_RECONCILIATION_READY'] as $key) if (env($key, false) !== false) $errors[] = $key;
 }
 if (!in_array(env('MAIL_ENCRYPTION'), ['tls', 'ssl'], true)) $errors[] = 'MAIL_ENCRYPTION';
 if (env('RECAPTCHA_SITE_KEY') === '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI'

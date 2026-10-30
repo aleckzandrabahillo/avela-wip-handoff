@@ -36,5 +36,17 @@ done
 [ "$ready" -eq 1 ] || { echo 'Upload scanner did not become ready.' >&2; exit 1; }
 php /var/www/avela/deploy/seed-uploads.php
 find /data/uploads -type f -exec chown www-data:www-data {} +
-# No database installer, migration, account mutation or payment worker runs at startup.
+# No installer, migration, account mutation or historical payment/email queue runs at startup.
+if [ "${MAYA_CONFIRMATION_MODE:-}" = api_reconciliation ]; then
+    runuser -u www-data -- php /var/www/avela/deploy/maya-api-worker.php &
+    maya_ready=0
+    for attempt in $(seq 1 15); do
+        if runuser -u www-data -- php -r 'require "/var/www/avela/bootstrap.php"; exit(App\Services\MayaApiReconciliation::ready()?0:1);'; then
+            maya_ready=1
+            break
+        fi
+        sleep 1
+    done
+    [ "$maya_ready" -eq 1 ] || { echo 'Sandbox API worker did not become ready.' >&2; exit 1; }
+fi
 exec apache2-foreground

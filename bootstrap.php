@@ -46,4 +46,10 @@ set_exception_handler(function (Throwable $e) use ($logDir): void {
     require __DIR__ . '/app/Views/errors/500.php';
 });
 
+// A retained local store needs its own exact operator-approved target. Existing disposable
+// test launchers and their database guards remain unchanged; HTTP input cannot approve a target.
+if (PHP_SAPI === 'cli-server' && !defined('AVELA_LOCAL_HOSTED_SANDBOX_ACTIVE')
+    && env('MAYA_LOCAL_HOSTED_SANDBOX', false) === true && \App\Services\MayaLocalTarget::approved()) {
+    define('AVELA_LOCAL_HOSTED_SANDBOX_ACTIVE', true);
+}
 Session::start();

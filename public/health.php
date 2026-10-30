@@ -23,6 +23,7 @@ try {
     $pdo->query('SELECT 1 FROM users LIMIT 1');
     if (!App\Services\AddressBook::installed($pdo)) throw new RuntimeException();
     App\Services\PiiCipher::configured();
+    if (env('MAYA_CONFIRMATION_MODE', '') === 'api_reconciliation' && !App\Services\MayaApiReconciliation::ready()) throw new RuntimeException();
     if (env('APP_ENV') === 'production') {
         $socket = @stream_socket_client('unix:///run/clamav/clamd.ctl', $error, $message, 0.5);
         if (!$socket) throw new RuntimeException();
