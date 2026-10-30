@@ -1,0 +1,44 @@
+<?php require_once dirname(__DIR__).'/partials/handoff_art.php'; ?>
+<?php if($hairProfile&&!$editing): require dirname(__DIR__).'/partials/saved_hair_profile.php'; else: ?>
+<section class="assessment-page"><header class="page-banner"><p class="eyebrow">LET’S START WITH YOU</p><h1>A little understanding.<br>A more personal routine.</h1><p>Your texture, scalp, and everyday habits. Five short steps to a clearer picture of your hair.</p></header>
+<div class="assessment-page-shell"><form class="assessment-shell" method="post" action="<?= e(url('/assessment')) ?>" data-assessment-form>
+ <?= csrf_field() ?><input type="hidden" name="profile_version" value="<?= e($profileVersion) ?>">
+ <aside class="quiz-side"><p>A little time for your hair. A little clarity for your care.</p><ol class="quiz-steps"><?php foreach(['Texture','Scalp','Lengths & habits','Your words','Review'] as $i=>$label): ?><li data-quiz-rail><span><?= str_pad((string)($i+1),2,'0',STR_PAD_LEFT) ?></span><?= e($label) ?></li><?php endforeach; ?></ol><p class="quiz-side-note">Your hair can change.<br>Your routine can, too.</p></aside>
+ <div class="quiz-main">
+ <?php if($errors): ?><div class="alert alert-error" id="profile-errors" role="alert" tabindex="-1" data-error-summary><h2>Please check your answers</h2><ul><?php foreach($errors as $field=>$message): ?><li><a href="#<?= e($field==='form'?'profile-submit':'hair-'.$field) ?>"><?= e($message) ?></a></li><?php endforeach; ?></ul></div><?php endif; ?>
+ <div class="quiz-top"><p class="eyebrow" data-quiz-label aria-live="polite">YOUR HAIR PROFILE</p><a class="icon-button" href="<?= e(url($hairProfile?'/assessment':'/profile')) ?>" aria-label="Close assessment"><?= handoff_icon('close') ?></a></div><div class="quiz-progress" data-quiz-progress hidden><progress value="1" max="5" aria-label="Assessment progress"></progress></div>
+ <?php
+ $stepGroups=[['hair_texture'],['scalp_type'],['hair_condition','concerns','treatments'],['concern_text']];
+ $questions=['What does your hair do naturally?','How does your scalp usually feel?','What would you like to focus on?','Tell us in your own words.'];
+ $descriptions=['Think of your hair when it air-dries, without heat styling. Choose the closest match.','Choose what feels most like your usual experience.','Choose any concerns you notice, then tell us about your styling habits.','A few words about your hair can add context. This part is optional.'];
+ $titles=['hair_texture'=>'Your natural pattern','scalp_type'=>'Your scalp','hair_condition'=>'My lengths and ends','concerns'=>'My everyday focus · choose all that apply (optional)','treatments'=>'My styling habits · choose all that apply (optional)'];
+ $textureNotes=['straight'=>'Little or no natural bend','wavy'=>'Loose S-shaped bends','curly'=>'Visible loops or spirals','coily'=>'Tight coils or zigzags','unsure'=>'We can start here, too'];
+ // Display labels/order only: all original PHP field names and allowed codes remain.
+ $scalpNotes=['normal_scalp'=>'Usually comfortable, not especially oily or dry','dry_scalp'=>'Often feels dry','oily_scalp'=>'Roots tend to feel greasy','unsure'=>'Still getting to know it'];
+ $displayChoices=['scalp_type'=>['normal_scalp'=>'Balanced','dry_scalp'=>'Dry','oily_scalp'=>'Oily','unsure'=>'Not sure'],'treatments'=>['colored'=>'Colour-treated','bleached'=>'Bleached','heat_styled'=>'Heat-styled','permed'=>'Permed','relaxed'=>'Chemically straightened']];
+ foreach($stepGroups as $i=>$fields): ?><section class="quiz-body" data-quiz-step><h2 tabindex="-1"><?= e($questions[$i]) ?></h2><p class="quiz-description"><?= e($descriptions[$i]) ?></p>
+ <?php foreach($fields as $field): if($field==='concern_text'): ?>
+ <label class="field-label" for="hair-concern_text">What have you noticed?</label>
+ <textarea id="hair-concern_text" name="concern_text" rows="4" maxlength="500" aria-describedby="hint-concern_text error-concern_text" aria-invalid="<?= isset($errors[$field])?'true':'false' ?>" placeholder="For example: My roots feel oily, but my ends get dry and tangled."><?= e($values[$field]) ?></textarea>
+ <div class="textarea-count"><span data-quiz-character-count><?= mb_strlen($values[$field]) ?></span> / 500</div>
+ <div class="recognized"><span>Recognized concerns</span><div><span class="tag">Analyzed when you save</span></div></div>
+ <p class="save-note" id="hint-concern_text">Avela recognizes simple cosmetic concerns and common phrases. Leave out names, contact details and medical information. Your selected answers take priority.</p><p class="field-error" id="error-concern_text"><?= e($errors[$field]??'') ?></p>
+ <?php else:
+  $multiple=in_array($field,['concerns','treatments'],true);$compact=$i===2;
+  $fieldChoices=array_intersect_key($displayChoices[$field]??[],$choices[$field])+$choices[$field];
+ ?><fieldset id="hair-<?= e($field) ?>" class="quiz-fieldset<?= $compact?' quiz-compact':'' ?>" aria-describedby="error-<?= e($field) ?>"><legend <?= $i<2?'class="visually-hidden"':'' ?>><?= e($titles[$field]) ?></legend><div class="<?= $compact?'chip-options':('quiz-options'.($field==='hair_texture'?' two-col':'')) ?>">
+ <?php foreach($fieldChoices as $code=>$label): ?><label class="<?= $compact?'choice-chip':'quiz-option' ?>"><input type="<?= $multiple?'checkbox':'radio' ?>" name="<?= e($field) ?><?= $multiple?'[]':'' ?>" value="<?= e($code) ?>" <?= ($multiple?in_array($code,$values[$field],true):$values[$field]===$code)?'checked':'' ?> <?= !$multiple?'required':'' ?> aria-invalid="<?= isset($errors[$field])?'true':'false' ?>"><?php if($field==='hair_texture'&&$code!=='unsure'): ?><span class="mini-texture"><?= handoff_texture($code) ?></span><?php endif; ?><span class="quiz-option-text"><strong><?= e($label) ?></strong><?php if($field==='hair_texture'||$field==='scalp_type'): ?><small><?= e(($field==='hair_texture'?$textureNotes:$scalpNotes)[$code]??'') ?></small><?php endif; ?></span></label><?php endforeach; ?>
+ <?php if($multiple): ?><label class="choice-chip" data-quiz-none-choice hidden><input type="checkbox" data-quiz-none="<?= e($field) ?>" <?= empty($values[$field])?'checked':'' ?>><span><?= $field==='concerns'?'No particular concern':'No regular treatments' ?></span></label><?php endif; ?>
+ </div><p class="field-error" id="error-<?= e($field) ?>"><?= e($errors[$field]??'') ?></p></fieldset><?php endif; endforeach; ?></section><?php endforeach; ?>
+ <section class="quiz-body quiz-review" data-quiz-step hidden><h2 tabindex="-1">A little picture of your hair.</h2><p class="quiz-description">Take a look before saving. You can change any answer.</p><div class="review-list" data-quiz-review></div><p class="save-note">Your profile is saved privately to your Avela account. Retaking the assessment won’t replace it until you save. Your product matches and routine will follow your saved profile.</p></section>
+ <nav class="quiz-actions" data-quiz-controls hidden aria-label="Assessment steps"><div><button type="button" class="back" data-quiz-previous>Previous</button></div><button type="button" class="button primary" data-quiz-next>Continue </button><div class="assessment-actions"><button class="button primary" id="profile-submit" type="submit">Save my profile</button></div></nav><noscript><button class="button primary" type="submit">Save my profile</button></noscript>
+ </div></form></div><p class="assessment-helper">Your existing profile stays as it is until you save. <a href="<?= e(url('/privacy')) ?>" data-assessment-privacy>How your answers are saved</a></p>
+ <dialog id="assessment-save-info" class="info-dialog assessment-save-info" aria-labelledby="assessment-save-info-title">
+  <button class="icon-button close-info" type="button" data-assessment-privacy-close aria-label="Close save information"><?= handoff_icon('close') ?></button>
+  <p class="eyebrow">YOUR PRIVACY</p><h2 id="assessment-save-info-title" tabindex="-1">Your hair. Your choice.</h2>
+  <p>Your assessment answers are saved privately to your Avela account when you choose Save my profile. Moving between steps does not replace your saved profile.</p>
+  <p>Until you save, your changes stay in memory on this page. Leaving or reloading the assessment discards unsaved changes. Avela does not save drafts to browser storage.</p>
+  <p>Avela analyzes your optional description when you save; your selected answers take priority. Your recommendations and My Routine update from the profile you save. Historical saved routines are retained for reference.</p>
+  <p>This assessment guides cosmetic care; it does not diagnose or treat scalp or medical conditions. Please leave out personal contact details or medical information. <a href="<?= e(url('/privacy')) ?>">Read our privacy policy</a>.</p>
+ </dialog></section>
+<?php endif; ?><script src="<?= e(asset('js/assessment.js')) ?>" defer></script>

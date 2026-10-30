@@ -1,0 +1,669 @@
+<?php
+
+namespace App\Controllers;
+
+use App\Core\Csrf;
+use App\Core\Response;
+use App\Core\Session;
+use App\Core\View;
+use App\Middleware\AuthGuard;
+use App\Models\Cart;
+use App\Models\Favorite;
+use App\Models\Product;
+use App\Models\Routine;
+use App\Models\User;
+use App\Services\DashboardService;
+use InvalidArgumentException;
+use App\Services\OtpService;
+use App\Core\CheckoutValidator;
+use App\Models\Order;
+use App\Services\CheckoutService;
+
+final class CustomerController
+{
+    public function __construct(
+        private readonly DashboardService $dashboard,
+        private readonly User $users,
+        private readonly Product $products,
+        private readonly Favorite $favorites,
+        private readonly Cart $cart,
+        private readonly Routine $routines,
+        private readonly OtpService $otp,
+        private readonly CheckoutService $checkoutService,
+        private readonly Order $orders,
+        private readonly ?\App\Services\MayaPaymentService $mayaPayments = null,
+    ) {}  
+
+    public function dashboard(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        $data = $this->commonData((int) $user['id']);
+        View::render('customer/dashboard', [
+            'pageTitle' => 'My Avela',
+            'stats' => $this->dashboard->customer((int) $user['id']),
+            ...$data,
+        ]);
+    }
+
+    public function page(string $view, string $title): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        header('Cache-Control: no-store, private');
+        View::render('customer/' . $view, [
+            'pageTitle' => $title,
+            'addresses'=>$view==='profile'?(new \App\Services\AddressBook())->all(\App\Core\Database::connection(),(int)$user['id']):[],
+            'savedAddress'=>$view==='profile'?(new \App\Services\CustomerAddress())->find(\App\Core\Database::connection(),(int)$user['id']):null,
+            ...$this->commonData((int) $user['id']),
+        ]);
+    }
+
+    public function favorites(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        $userId = (int) $user['id'];
+        $favoritePage=$this->favorites->pageForUser($userId,$_GET);
+        View::render('customer/favorites', [
+            'pageTitle' => 'Favorites',
+            'favoriteProducts' => $favoritePage['items'],'favoritePage'=>$favoritePage,
+            ...$this->commonData($userId),
+        ]);
+    }
+
+    public function cart(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        $userId = (int) $user['id'];
+        header('Cache-Control: no-store, private');
+        if (($_GET['panel'] ?? '') === '1') {
+            View::render('partials/bag_contents', ['cart' => $this->cart->contentsForUser($userId)], 'fragment');
+            return;
+        }
+        // Keep existing cart URLs compatible; the bag is presented in one drawer.
+        Response::redirect('/?bag=open');
+    }
+
+    public function checkout(): void
+    {
+        header('Cache-Control: no-store, private');
+        $user = AuthGuard::roles(['customer']);
+        $this->renderCheckout((int) $user['id']);
+    }
+
+    public function shipping(): void
+    {
+        header('Cache-Control: no-store, private');AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token']??null)?$_POST['_token']:null);
+        foreach(['postal_code','city','region'] as $field)if(!is_string($_POST[$field]??'')){Response::json(['error'=>'Check your delivery address.'],422);return;}
+        try{Response::json(['options'=>\App\Services\ShippingService::options(trim($_POST['postal_code']??''),trim($_POST['city']??''),trim($_POST['region']??''))]);}
+        catch(InvalidArgumentException $e){Response::json(['error'=>$e->getMessage()],422);}
+    }
+
+    public function pricing(): void
+    {
+        header('Cache-Control: no-store, private');$user=AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token']??null)?$_POST['_token']:null);
+        $values=[];foreach(['postal_code'=>4,'city'=>100,'region'=>80,'shipping_method'=>16,'discount_code'=>32] as $field=>$limit){
+            $value=$_POST[$field]??'';if(!is_string($value)||!mb_check_encoding($value,'UTF-8')||mb_strlen($value)>$limit){Response::json(['ok'=>false,'error'=>'Check the delivery or discount fields.'],422);return;}$values[$field]=trim($value);
+        }
+        try{
+            $cart=$this->checkoutService->quote((int)$user['id']);$subtotal=(int)round((float)$cart['subtotal']*100);$options=[];$shipping=null;$discount=null;$error='';$field='';
+            if($values['postal_code']!==''&&$values['city']!==''&&$values['region']!==''){
+                try{$options=\App\Services\ShippingService::options($values['postal_code'],$values['city'],$values['region']);$shipping=$options[$values['shipping_method']]??null;if(!$shipping)throw new InvalidArgumentException('Choose a shipping method.');}
+                catch(InvalidArgumentException $e){$error=$e->getMessage();$field='shipping';}
+            }
+            try{$discount=(new \App\Services\DiscountService())->quote(\App\Core\Database::connection(),(int)$user['id'],$values['discount_code'],$subtotal);}
+            catch(InvalidArgumentException $e){$error=$e->getMessage();$field='discount';}
+            $options=\App\Services\ShippingService::eligible($options,$subtotal-($discount['amount_cents']??0));
+            if($shipping)$shipping=$options[$values['shipping_method']];
+            Response::json(['ok'=>$error==='','error'=>$error,'field'=>$field,'subtotal_cents'=>$subtotal,'shipping'=>$shipping,'options'=>$options,'discount'=>$discount,'total_cents'=>$subtotal-($discount['amount_cents']??0)+($shipping['cents']??0),'cart_signature'=>$cart['signature']],$error===''?200:422);
+        }catch(\Throwable){Response::json(['ok'=>false,'error'=>'Your total could not be updated. Please try again.'],503);}
+    }
+
+    public function placeOrder(): void
+    {
+        header('Cache-Control: no-store, private');
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token'] ?? null) ? $_POST['_token'] : null);
+        $userId = (int) $user['id'];
+        $checked = CheckoutValidator::validate($_POST, $this->users->profileFor($userId));
+        $key = is_string($_POST['checkout_key'] ?? null) ? $_POST['checkout_key'] : '';
+        try {
+            // Replays always resolve to this customer's existing order, even after a new checkout.
+            if (preg_match('/^[a-f0-9]{64}$/D', $key) && ($id = $this->orders->submitted($userId, $key)) !== null) {
+                http_response_code(303);
+                Response::redirect('/orders/view?id=' . $id);
+            }
+            $intent = Session::get('checkout_intent');
+            if (!is_array($intent) || ($intent['user_id'] ?? 0) !== $userId
+                || !is_string($intent['key'] ?? null) || !hash_equals($intent['key'], $key)
+                || (int) ($intent['issued_at'] ?? 0) < time() - 1800) {
+                $checked['errors']['form'] = 'Checkout expired or changed. Review this fresh form before submitting again.';
+            }
+            if ($checked['errors']) {
+                http_response_code(422);
+                $this->renderCheckout($userId, $checked['values'], $checked['errors']);
+                return;
+            }
+            $id = $this->checkoutService->place($userId, $checked['values'], $key, $intent['signature']);
+            if ($checked['values']['payment_method'] === 'maya_sandbox') {
+                $payments = $this->mayaPayments ?? new \App\Services\MayaPaymentService(\App\Core\Database::connection(), \App\Services\MayaSandboxConfig::client());
+                $destination = $payments->start($userId, $id);
+                if ($destination !== null) { header('Location: '.$destination, true, 303); exit; }
+                Session::flash('warning', 'Your order is awaiting payment confirmation. Check its status before trying another checkout.');
+                http_response_code(303);Response::redirect('/orders/view?id='.$id);
+            }
+            \App\Services\OrderNotification::deliver(\App\Core\Database::connection(),$id);
+            Session::flash('success', 'Your order has been received.');
+            http_response_code(303);
+            Response::redirect('/orders/view?id=' . $id);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(409);
+            $this->renderCheckout($userId, $checked['values'], ['form' => $e->getMessage()]);
+        } catch (\Throwable) {
+            http_response_code(503);
+            $this->renderCheckout($userId, $checked['values'], ['form' => 'We could not place your order. Your bag was preserved; please try again later.']);
+        }
+    }
+
+    public function sendConfirmation(): void
+    {
+        header('Cache-Control: no-store, private');$user=AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token']??null)?$_POST['_token']:null);
+        $id=is_string($_POST['order_id']??null)&&preg_match('/^[1-9][0-9]{0,17}$/D',$_POST['order_id'])?(int)$_POST['order_id']:0;
+        if(!$this->orders->owned($id,(int)$user['id'])){http_response_code(404);return;}
+        \App\Core\Database::transaction(static function($pdo)use($user,$id):void{
+            \App\Services\AuditService::record($pdo,(int)$user['id'],'order.email_requested','order',$id,['channel'=>'account']);
+        });
+        $result=\App\Services\OrderNotification::deliver(\App\Core\Database::connection(),$id);
+        Session::flash(($result['status']??'')==='sent'?'success':'warning',($result['status']??'')==='sent'?'Your order email has been sent.':'Check the email update on your order. A second copy has not been sent.');
+        http_response_code(303);Response::redirect('/orders/view?id='.$id);
+    }
+
+    public function orders(): void
+    {
+        header('Cache-Control: no-store, private');$user=AuthGuard::roles(['customer']);
+        $page=is_string($_GET['page']??null)&&preg_match('/^[0-9]{1,8}$/D',$_GET['page'])?(int)$_GET['page']:1;
+        try{$history=$this->orders->forCustomer((int)$user['id'],$page,$_GET);}
+        catch(InvalidArgumentException $e){Session::flash('warning',$e->getMessage());$history=$this->orders->forCustomer((int)$user['id']);}
+        View::render('customer/orders',['pageTitle'=>'My orders','history'=>$history,...$this->commonData((int)$user['id'])]);
+    }
+    public function order(): void
+    {
+        header('Cache-Control: no-store, private');
+        $user = AuthGuard::roles(['customer']);
+        $id = is_string($_GET['id'] ?? null) && preg_match('/^[1-9][0-9]{0,17}$/D', $_GET['id']) ? (int) $_GET['id'] : 0;
+        $reference=$_GET['reference']??null;
+        $order=$reference!==null?$this->orders->ownedReference($reference,(int)$user['id']):$this->orders->owned($id,(int)$user['id']);
+        if ($order === null) {
+            http_response_code(404);
+            View::render('errors/404', ['pageTitle' => 'Order not found'], 'plain');
+            return;
+        }
+        View::render('customer/order', ['pageTitle' => \App\Services\OrderReference::display($order), 'order' => $order,
+            ...$this->commonData((int) $user['id'])]);
+    }
+
+    private function renderCheckout(int $userId, array $values = [], array $errors = []): void
+    {
+        try {
+            $cart = $this->checkoutService->quote($userId);
+        } catch (InvalidArgumentException $e) {
+            Session::flash('warning', $e->getMessage());
+            Response::redirect('/cart');
+        } catch (\Throwable) {
+            http_response_code(503);
+            View::render('errors/500', ['pageTitle' => 'Checkout unavailable',
+                'message' => 'Checkout is temporarily unavailable. Your bag has been preserved.'], 'plain');
+            return;
+        }
+        if (!$cart['items'] || (!$cart['checkout_ready'] && !$errors)) {
+            Session::flash('warning', $cart['items'] ? 'Review unavailable items in your bag before checkout.' : 'Your bag is empty.');
+            Response::redirect('/cart');
+        }
+        $profile = $this->users->profileFor($userId);
+        if (!$values) {
+            $deliveryProfile=$profile;
+            if(\App\Services\AddressBook::initialized(\App\Core\Database::connection(),$userId))$deliveryProfile['delivery_address']='';
+            $values=\App\Core\DeliveryValidator::prefill($deliveryProfile);
+            $saved=(new \App\Services\CustomerAddress())->find(\App\Core\Database::connection(),$userId);
+            if($saved)foreach(['country','first_name','last_name','address_line','barangay','postal_code','city','region','contact_no','province'] as $field)$values[$field]=$saved[$field]??'';
+        }
+        $intent = Session::get('checkout_intent');
+        if (!is_array($intent) || ($intent['user_id'] ?? 0) !== $userId || ($intent['signature'] ?? '') !== $cart['signature']
+            || (int) ($intent['issued_at'] ?? 0) < time() - 1800) {
+            $intent = ['user_id' => $userId, 'key' => bin2hex(random_bytes(32)), 'signature' => $cart['signature'], 'issued_at' => time()];
+            Session::put('checkout_intent', $intent);
+        }
+        $discountPreview=null;
+        if(($values['discount_code']??'')!==''){
+            try{$discountPreview=(new \App\Services\DiscountService())->quote(\App\Core\Database::connection(),$userId,$values['discount_code'],(int)round((float)$cart['subtotal']*100));}
+            catch(InvalidArgumentException $e){$errors['discount_code']=$e->getMessage();}
+        }
+        View::render('customer/checkout', ['pageTitle' => 'Checkout', 'cart' => $cart, 'profile' => $profile, 'discountPreview'=>$discountPreview,'deliveryAddresses'=>(new \App\Services\AddressBook())->all(\App\Core\Database::connection(),$userId),'savedDelivery'=>(new \App\Services\CustomerAddress())->find(\App\Core\Database::connection(),$userId),
+            'values' => $values, 'errors' => $errors, 'checkoutKey' => $intent['key'],
+            'mayaAvailable' => \App\Services\MayaSandboxConfig::available() && \App\Services\MayaMigration::installed(\App\Core\Database::connection())], 'checkout');
+    }
+
+    public function routine(): void
+    {
+        header('Cache-Control: no-store, private');
+        $user = AuthGuard::roles(['customer']);
+        $userId = (int) $user['id'];
+        View::render('customer/routine', [
+            'pageTitle' => 'My Routine',
+            'routineState' => $this->routines->currentForUser($userId),
+            ...$this->commonData($userId),
+        ]);
+    }
+
+    public function addToCart(): void
+    {
+        $user=AuthGuard::roles(['customer']);Csrf::enforce(is_string($_POST['_token']??null)?$_POST['_token']:null);
+        $productId=$this->positiveInt($_POST['product_id']??null);$quantity=$this->positiveInt($_POST['quantity']??1);$json=$this->wantsJson();
+        $returnTo=$this->safeReturnPath(is_string($_POST['return_to']??null)?$_POST['return_to']:'/cart','/cart');
+        try{
+            if($productId===null||$quantity===null)throw new InvalidArgumentException('Choose a valid product and quantity.');
+            $this->cart->add((int)$user['id'],$productId,$quantity);
+            if($json){Response::json(['ok'=>true,'message'=>'Added to your bag.',...$this->cartResponseData((int)$user['id'],$productId)]);return;}
+            Session::flash('success','Added to your bag.');
+        }catch(InvalidArgumentException $e){if($json){Response::json(['ok'=>false,'message'=>$e->getMessage()],422);return;}Session::flash('warning',$e->getMessage());}
+        catch(\Throwable){if($json){Response::json(['ok'=>false,'message'=>'Your bag could not be updated. Please try again.'],503);return;}Session::flash('warning','Your bag could not be updated. Please try again.');}
+        Response::redirect($returnTo);
+    }
+
+    public function updateCart(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce($_POST['_token'] ?? null);
+        $userId = (int) $user['id'];
+        $productId = $this->positiveInt($_POST['product_id'] ?? null);
+        $quantity = $this->positiveInt($_POST['quantity'] ?? null);
+        $wantsJson = $this->wantsJson();
+
+        if ($productId === null || $quantity === null) {
+            if ($wantsJson) {
+                Response::json([
+                    'ok' => false,
+                    'message' => 'Choose a valid quantity.',
+                    ...$this->cartResponseData($userId, $productId),
+                ], 422);
+            }
+            Session::flash('warning', 'Choose a valid quantity.');
+            Response::redirect('/cart');
+        }
+
+        try {
+            $this->cart->update($userId, $productId, $quantity);
+            if ($wantsJson) {
+                Response::json([
+                    'ok' => true,
+                    'message' => 'Bag updated.',
+                    ...$this->cartResponseData($userId, $productId),
+                ]);
+            }
+            Session::flash('success', 'Bag updated.');
+        } catch (InvalidArgumentException $e) {
+            if ($wantsJson) {
+                Response::json([
+                    'ok' => false,
+                    'message' => $e->getMessage(),
+                    ...$this->cartResponseData($userId, $productId),
+                ], 422);
+            }
+            Session::flash('warning', $e->getMessage());
+        }
+        Response::redirect('/cart');
+    }
+
+    public function removeFromCart(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce($_POST['_token'] ?? null);
+        $productId = $this->positiveInt($_POST['product_id'] ?? null);
+        if ($productId !== null) {
+            $this->cart->remove((int) $user['id'], $productId);
+            Session::flash('success', 'Removed from your bag.');
+        }
+        Response::redirect('/cart');
+    }
+
+    public function favoriteState(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        header('Cache-Control: no-store, private');
+        $ids = $this->favorites->idsForUser((int) $user['id']);
+        Response::json(['ok' => true, 'ids' => $ids, 'count' => count($ids)]);
+    }
+
+    public function toggleFavorite(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token'] ?? null) ? $_POST['_token'] : null);
+
+        $productId = filter_var($_POST['product_id'] ?? null, FILTER_VALIDATE_INT);
+        if ($productId === false || $productId < 1) {
+            $this->favoriteResponse(false, 'Product not found.', false, (int) $user['id']);
+        }
+
+        try {
+            $saved = $this->favorites->toggle((int) $user['id'], (int) $productId);
+            $message = $saved ? 'Saved to favorites.' : 'Removed from favorites.';
+            $this->favoriteResponse(true, $message, $saved, (int) $user['id']);
+        } catch (InvalidArgumentException) {
+            $this->favoriteResponse(false, 'That product is no longer available.', false, (int) $user['id']);
+        }
+    }
+
+    private function commonData(int $userId): array
+    {
+        $options = $this->products->filterOptions();
+        return [
+            'profile' => $this->users->profileFor($userId),
+            'storeNav' => [
+                'categories' => $options['categories'] ?? [],
+                'concerns' => $options['concern'] ?? [],
+            ],
+            'favoriteIds' => $this->favorites->idsForUser($userId),
+            'favoriteCount' => $this->favorites->countForUser($userId),
+            'cartCount' => $this->cart->countForUser($userId),
+        ];
+    }
+
+    private function favoriteResponse(bool $ok, string $message, bool $saved, int $userId): never
+    {
+        $count = $this->favorites->countForUser($userId);
+        $acceptsJson = str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
+        if ($acceptsJson) {
+            Response::json([
+                'ok' => $ok,
+                'favorite' => $saved,
+                'count' => $count,
+                'message' => $message,
+            ], $ok ? 200 : 422);
+        }
+
+        Session::flash($ok ? 'success' : 'warning', $message);
+        Response::redirect($this->safeReturnPath((string) ($_POST['return_to'] ?? '/favorites'), '/favorites'));
+    }
+
+
+    private function wantsJson(): bool
+    {
+        return str_contains(strtolower((string) ($_SERVER['HTTP_ACCEPT'] ?? '')), 'application/json');
+    }
+
+    private function cartResponseData(int $userId, ?int $productId): array
+    {
+        $cart = $this->cart->contentsForUser($userId);
+        $item = null;
+        if ($productId !== null) {
+            foreach ($cart['items'] as $candidate) {
+                if ((int) $candidate['product_id'] === $productId) {
+                    $item = [
+                        'productId' => (int) $candidate['product_id'],
+                        'quantity' => (int) $candidate['quantity'],
+                        'lineTotal' => (float) $candidate['line_total'],
+                    ];
+                    break;
+                }
+            }
+        }
+
+        return [
+            'item' => $item,
+            'itemCount' => (int) $cart['item_count'],
+            'subtotal' => (float) $cart['subtotal'],
+            'checkoutReady' => (bool) $cart['checkout_ready'],
+            'availability' => array_map(static fn(array $candidate): array => [
+                'productId'=>(int)$candidate['product_id'],
+                'stock'=>(int)$candidate['stock_qty'],
+                'canAdjust'=>(bool)$candidate['can_adjust'],
+                'message'=>$candidate['availability_message'],
+            ],$cart['items']),
+        ];
+    }
+
+    private function positiveInt(mixed $value): ?int
+    {
+        $int = filter_var($value, FILTER_VALIDATE_INT);
+        return ($int !== false && $int > 0) ? (int) $int : null;
+    }
+
+    private function safeReturnPath(string $path, string $fallback): string
+    {
+        $path = trim($path);
+        if ($path === '' || preg_match('/[\r\n]/', $path) || !str_starts_with($path, '/') || str_starts_with($path, '//')) {
+            return $fallback;
+        }
+        $parts = parse_url($path);
+        if ($parts === false || isset($parts['scheme']) || isset($parts['host'])) {
+            return $fallback;
+        }
+        return $path;
+    }
+    public function updateProfileImage(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce($_POST['_token'] ?? null);
+        $images = new \App\Services\ProfileImageService();
+        $path = null;
+        try {
+            $path = $images->store($_FILES['profile_image'] ?? null);
+            $oldImage = $this->users->updateProfileImage((int) $user['id'], $path);
+        } catch (\InvalidArgumentException $e) {
+            $images->discard($path);
+            Session::flash('warning', $e->getMessage());
+            Response::redirect('/profile');
+        } catch (\Throwable) {
+            $images->discard($path);
+            Session::flash('warning', 'Your profile photograph could not be saved. Please try again.');
+            Response::redirect('/profile');
+        }
+        $images->discard($oldImage);
+        Session::flash('success', 'Profile picture updated successfully.');
+        Response::redirect('/profile');
+    }
+
+    public function profileOtpForm(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+
+        $flow = Session::get('profile_update_flow');
+
+        if (!is_array($flow) || (int) ($flow['user_id'] ?? 0) !== (int) $user['id']) {
+            Session::flash('warning', 'There is no profile update waiting for verification.');
+            Response::redirect('/profile');
+        }
+
+        $email = (string) ($flow['current_email'] ?? '');
+
+        if ($email === '') {
+            Session::flash('warning', 'The profile update verification session is invalid.');
+            Session::forget('profile_update_flow');
+            Response::redirect('/profile');
+        }
+
+        View::render('customer/profile-verify-otp', [
+            'pageTitle' => 'Confirm Profile Update',
+            'maskedEmail' => $this->maskEmail($email),
+            'purpose' => 'profile_update',
+        ], 'auth');
+    }
+
+    public function updateProfile(): void
+    {
+        $user = AuthGuard::roles(['customer']);
+        Csrf::enforce(is_string($_POST['_token'] ?? null) ? $_POST['_token'] : null);
+
+        $userId = (int) $user['id'];
+
+        $input = [];
+        $errors = [];
+        foreach (['full_name', 'username', 'email', 'contact_no', 'delivery_address'] as $field) {
+            $raw = $_POST[$field] ?? (in_array($field,['delivery_address','username'],true)?($this->users->profileFor($userId)[$field]??''):'');
+            if (!is_string($raw)) $errors[$field] = 'Enter a valid text value.';
+            $input[$field] = is_string($raw) ? trim($raw) : '';
+        }
+        $fullName = $input['full_name'];
+        $username = $input['username'];
+        if(!preg_match('/^[A-Za-z0-9._-]{4,40}$/D',$username))$errors['username']='Use 4–40 letters, numbers, dots, underscores, or hyphens.';
+        $email = strtolower($input['email']);
+        $contactNo = $input['contact_no'];
+        $deliveryAddress = $input['delivery_address'];
+        if ($fullName === '' || mb_strlen($fullName) > 100) $errors['full_name'] = 'Enter your full name, up to 100 characters.';
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) $errors['email'] = 'Enter a valid email address, up to 190 characters.';
+        $normalizedContact=\App\Core\Validator::normalizePhilippineMobile($contactNo);
+        if ($normalizedContact===null || strlen($contactNo)>25) $errors['contact_no'] = 'Enter a valid Philippine mobile number, such as 09XXXXXXXXX.';
+        if (mb_strlen($deliveryAddress) > 500) $errors['delivery_address'] = 'Keep the delivery address within 500 characters.';
+        if ($errors) {
+            Session::keepOld($input);
+            Session::put('errors', $errors);
+            Response::redirect('/profile?edit=1');
+        }
+        $contactNo=$normalizedContact;
+
+        $currentProfile = $this->users->profileFor($userId);
+
+        $currentUsername=(string)($currentProfile['username']??'');
+        $expectedUsername=$_POST['expected_username']??$currentUsername;
+        if(!is_string($expectedUsername)||$expectedUsername!==$currentUsername){
+            Session::flash('warning','Your account changed. Reload your profile and try again.');
+            Response::redirect('/profile');
+        }
+        $existing=$this->users->findByIdentifier($username);
+        if($existing&&(int)$existing['id']!==$userId){
+            Session::keepOld($input);Session::put('errors',['username'=>'That username is already in use.']);
+            Response::redirect('/profile?edit=1');
+        }
+        $currentFullName = trim((string) ($currentProfile['full_name'] ?? ''));
+        $currentEmail = strtolower(trim((string) ($currentProfile['email'] ?? '')));
+        $currentContactNo = trim((string) ($currentProfile['contact_no'] ?? ''));
+        $currentDeliveryAddress = trim((string) ($currentProfile['delivery_address'] ?? ''));
+
+        $hasChanges =
+            $username !== $currentUsername
+            || $fullName !== $currentFullName
+            || $email !== $currentEmail
+            || $contactNo !== $currentContactNo
+            || $deliveryAddress !== $currentDeliveryAddress;
+
+        if (!$hasChanges) {
+            Session::flash('warning', 'No profile changes were made.');
+            Response::redirect('/profile');
+        }
+
+        if ($email !== $currentEmail && $this->users->emailExistsForOtherUser($email, $userId)) {
+            Session::keepOld($input);
+            Session::put('errors', ['email' => 'That email address is already in use.']);
+            Response::redirect('/profile?edit=1');
+        }
+
+        if ($email === $currentEmail) {
+            try {
+                \App\Core\Database::transaction(function()use($userId,$fullName,$email,$contactNo,$deliveryAddress,$username,$expectedUsername):void{
+                    $current=$this->users->findById($userId,true);
+                    if(strtolower($current['email']??'')!==$email||($current['username']??'')!==$expectedUsername)throw new \DomainException('Your account changed. Reload your profile.');
+                    $saved=(new \App\Services\CustomerAddress())->find(\App\Core\Database::connection(),$userId);
+                    $latest=$this->users->profileFor($userId);
+                    if($saved&&$deliveryAddress!==trim((string)($latest['delivery_address']??'')))throw new \DomainException('Use the address form to change your delivery address.');
+                    $this->users->updateCustomerProfile($userId,$fullName,$email,$contactNo,$saved?($latest['delivery_address']??null):($deliveryAddress?:null),$username);
+                });
+                $signedIn=Session::get('auth_user');
+                if(is_array($signedIn)){$signedIn['username']=$username;Session::put('auth_user',$signedIn);}
+                Session::flash('success','Your profile has been updated.');
+            } catch (\Throwable) { Session::flash('warning','Your profile could not be saved. Reload and try again.'); }
+            Response::redirect('/profile');
+        }
+
+        Session::put('profile_update_flow', [
+            'user_id' => $userId,
+            'current_email' => $currentEmail,
+            'before_username'=>$currentUsername,'username'=>$username,
+            'before_full_name'=>$currentFullName,'before_contact_no'=>$currentContactNo,'before_delivery_address'=>$currentDeliveryAddress,
+            'full_name' => $fullName,
+            'email' => $email,
+            'contact_no' => $contactNo,
+            'delivery_address' => $deliveryAddress,
+            'sent_at' => time(),
+        ]);
+
+        try {
+            $issued = $this->otp->issue($userId, $currentEmail, 'profile_update');
+            if (!$issued['issued']) {
+                Session::forget('profile_update_flow');
+                Session::keepOld($input);
+                Session::flash('warning', "Please wait {$issued['retry_after']} seconds before requesting another code.");
+                Response::redirect('/profile?edit=1');
+            }
+        } catch (\Throwable $e) {
+            Session::forget('profile_update_flow');
+            Session::keepOld($input);
+            Session::flash('warning', 'We could not send the verification code. Please try again.');
+            Response::redirect('/profile?edit=1');
+        }
+
+        Session::flash(
+            'success',
+            'A verification code was sent to your current email address.'
+        );
+
+        Response::redirect('/profile/verify-otp');
+    }
+
+        private function maskEmail(string $email): string
+    {
+        $parts = explode('@', $email, 2);
+
+        if (count($parts) !== 2) {
+            return $email;
+        }
+
+        [$local, $domain] = $parts;
+
+        if ($local === '') {
+            return $email;
+        }
+
+        $visible = substr($local, 0, 1);
+
+        return $visible . str_repeat('*', max(2, strlen($local) - 1)) . '@' . $domain;
+    }
+    public function verifyProfileOtp(): void
+    {
+        $user=AuthGuard::roles(['customer']);
+        Csrf::enforce($_POST['_token']??null);
+        $raw=$_POST['otp']??'';
+        $code=is_string($raw)?preg_replace('/\s+/','',$raw):'';
+        if(!preg_match('/^[0-9]{6}$/D',$code)){
+            Session::put('errors',['otp'=>'Enter the 6-digit code.']);
+            Response::redirect('/profile/verify-otp');
+        }
+        $id=(int)$user['id'];
+        $flow=Session::get('profile_update_flow');
+        if(!is_array($flow)||(int)($flow['user_id']??0)!==$id){
+            Session::flash('warning','Your profile update verification session has expired.');
+            Response::redirect('/profile');
+        }
+        try {
+            $result=(new \App\Services\CustomerProfileService($this->otp))->confirm($id,$flow,$code);
+        } catch(\Throwable) {
+            Session::flash('warning','Your profile could not be saved. No partial change was committed; retry verification before the code expires.');
+            Response::redirect('/profile/verify-otp');
+        }
+        if(!$result['ok']){
+            $message=match($result['reason']??''){
+                'expired'=>'The verification code expired. Request a new profile update.',
+                'attempt_limit'=>'Too many incorrect attempts. Request a new profile update.',
+                'account_unavailable'=>'The account or email changed. Start a new profile update.',
+                default=>'The verification code is invalid or already used.',
+            };
+            Session::put('errors',['otp'=>$message]);
+            Response::redirect('/profile/verify-otp');
+        }
+        $current=Session::get('auth_user');
+        if(is_array($current)){$current['email']=$flow['email'];$current['username']=$this->users->findById($id)['username'];Session::put('auth_user',$current);}
+        Session::forget('profile_update_flow');Session::put('errors',[]);
+        Session::flash('success','Your profile has been updated successfully.');
+        Response::redirect('/profile');
+    }
+}

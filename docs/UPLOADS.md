@@ -1,0 +1,11 @@
+# Image-upload controls
+
+Product and profile images require genuine PHP uploads, actual nonempty byte sizes up to 2.5 MB (2,621,440 bytes), an allowed JPEG/PNG/WebP extension, matching fileinfo MIME and image-header MIME, successful GD decoding, and random server-generated filenames. Both flows allow at most 6000 pixels on either side and 16 megapixels. The shared limits are in `config/uploads.php`; PHP GD must be enabled. Browser feedback rejects oversized selections early; server checks remain authoritative. PHP/host request limits must accommodate multipart overhead above 2.5 MB. Successful decoding is not proof that a file is malware-free.
+
+Both upload directories have tracked Apache policies restricting public files to generated raster names, disabling listing/CGI and forcing the default handler. Uploads fail closed if their storage policy is missing. Confirm policy enforcement on the actual Apache host; PHP's local development server does not exercise Apache directives. Alternative hosts need an equivalent static-only configuration, and private files must remain outside their public document root.
+
+Profile path updates and audit writes commit together. A failed database/audit operation removes the new upload; successful replacement retires only the previous generated photo. Legacy assets and paths outside the service's directory are preserved. Product-image sharing/reference protection remains unchanged.
+
+The optional real Windows Defender scanner runs against the private PHP upload temporary file before publication when explicitly enabled. Disabled mode makes no antivirus claim. Configured scanning fails closed on unsupported hosts, unavailable binaries, errors, detections and timeouts. Presence of Defender alone is not service-identity acceptance; verify the deployment separately. See [scan acceptance](UPLOAD_SCANNING.md). No fake scanner or success flag is implemented.
+
+Large JPEGs are proportionally reduced to at most 1,800 pixels; PNG/WebP bytes and transparency remain intact. Existing stored images and approved immutable demo assets are not retroactively invalidated. Configure PHP upload_max_filesize at or above 2560K and post_max_size above multipart overhead; requests exceeding PHP's whole-body limit receive HTTP 413.
