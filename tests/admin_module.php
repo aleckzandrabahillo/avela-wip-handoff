@@ -187,6 +187,10 @@ try {
     $stock=fn()=>(int)$pdo->query('SELECT stock_qty FROM products WHERE id='.$product)->fetchColumn();
     $status=fn($order)=>$pdo->query('SELECT status FROM orders WHERE id='.(int)$order)->fetchColumn();
     $order=$makeOrder();$afterCheckout=$stock();$cust=adminClient($customer);
+    $orderList=hairRequest('/admin/orders?q='.rawurlencode(App\Services\OrderReference::display(['id'=>$order])),$admin);
+    preg_match('/<form class="staff-order-status"[^>]*>(.*?)<\/form>/s',$orderList['body'],$statusForm);
+    verifyHair('Administrator edits status in one labelled dropdown without a Next update column',$orderList['code']===200&&!str_contains($orderList['body'],'<th>Next update</th>')&&isset($statusForm[1])&&str_contains($statusForm[1],'name="status" aria-label="Status for ')&&str_contains($statusForm[1],'name="expected_status" value="pending"')&&str_contains($statusForm[1],'name="expected_delivery_event" value="0"'));
+    verifyHair('Pending COD dropdown offers processing and cancellation without skipping fulfillment',isset($statusForm[1])&&str_contains($statusForm[1],'<option value="processing">')&&str_contains($statusForm[1],'<option value="cancelled">')&&!str_contains($statusForm[1],'<option value="shipped">')&&!str_contains($statusForm[1],'<option value="delivered">'));
     foreach([$cust,$catalog] as $unauthorized)verifyHair('Unauthorized cancellation denied',hairRequest('/admin/orders/status',$unauthorized,['_token'=>$unauthorized['csrf'],'order_id'=>(string)$order,'expected_status'=>'pending','status'=>'cancelled'])['code']===403&&$stock()===$afterCheckout);
     verifyHair('Admin order detail loads actual snapshot',hairRequest('/admin/orders/view?id='.$order,$admin)['code']===200&&str_contains(hairRequest('/admin/orders/view?id='.$order,$admin)['body'],'Synthetic cancellation product'));
     verifyHair('Admin missing/malformed order returns 404',hairRequest('/admin/orders/view?id%5B%5D=bad',$admin)['code']===404);

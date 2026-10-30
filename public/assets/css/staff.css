@@ -111,6 +111,11 @@
 .avela-staff .catalog-actions,.avela-staff .table-actions,.avela-staff .admin-account-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .avela-staff .catalog-actions form,.avela-staff .table-actions form,.avela-staff .admin-account-actions form{margin:0}
 .avela-staff .admin-order-table form+form{margin-top:8px}
+.avela-staff .admin-order-table .order-status-cell{min-width:270px;width:290px}
+.avela-staff .staff-main .staff-order-status{display:flex;align-items:center;gap:8px;margin:0}
+.avela-staff .staff-order-status>select,.avela-staff .staff-order-status>.avela-select{flex:1 1 170px;min-width:160px;width:auto}
+.avela-staff .staff-order-status>.btn{flex:none;min-height:42px;white-space:nowrap}
+.avela-staff .staff-main .order-status-note{margin:7px 0 0;line-height:1.5}
 .avela-staff .staff-main .admin-account-action{display:flex;gap:8px;align-items:center}
 .avela-staff .staff-main .admin-account-action .avela-select,.avela-staff .staff-main .admin-account-action select{min-width:165px}
 .staff-status{display:inline-flex;align-items:center;gap:6px;min-height:24px;padding:3px 8px;border-radius:6px;font-size:var(--type-small, 13px);font-weight:550;line-height:1.4;white-space:nowrap;flex:none}
